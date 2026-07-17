@@ -1535,6 +1535,46 @@ void npc::stow_item( item &it )
     }
 }
 
+static void choose_best_MA_style( npc *you )
+{
+    item_location weapon_location = you->get_wielded_item();
+    item &current_weapon = weapon_location ? *weapon_location : null_item_reference();
+    const bool can_use_gun = !you->is_player_ally() ||
+                             you->rules.has_flag( ally_rule::use_guns );
+    const bool use_silent = you->is_player_ally() &&
+                            you->rules.has_flag( ally_rule::use_silent );
+
+    const pimpl<character_martial_arts> &ma_data = you->martial_arts_data;
+    const matype_id starting_style = ma_data->selected_style();
+    matype_id best_style = starting_style;
+
+    you->cached_info.erase( "weapon_value" );
+    double best_weapon_value = you->evaluate_weapon( current_weapon, can_use_gun, use_silent );
+
+    for( const matype_id &style : ma_data->get_known_styles() ) {
+        ma_data->clear_all_effects( *you );
+        ma_data->set_style( style );
+        ma_data->ma_static_effects( *you );
+        you->cached_info.erase( "weapon_value" );
+
+        const double candidate_value = you->evaluate_weapon( current_weapon, can_use_gun, use_silent );
+        if( candidate_value > best_weapon_value ) {
+            best_weapon_value = candidate_value;
+            best_style = style;
+        }
+    }
+
+    ma_data->clear_all_effects( *you );
+    ma_data->set_style( best_style );
+    ma_data->ma_static_effects( *you );
+    you->cached_info.erase( "weapon_value" );
+
+    if( starting_style != best_style ) {
+        add_msg_if_player_sees( *you, m_info, _( "%1$s switches to using %2$s!" ),
+                                you->disp_name(), ma_data->selected_style_name( *you ) );
+    }
+}
+
 bool npc::wield( item &it )
 {
     // sanity check: exit early if we're trying to wield the current weapon
@@ -1562,6 +1602,7 @@ bool npc::wield( item &it )
     if( to_wield.is_null() ) {
         set_wielded_item( item() );
         get_event_bus().send<event_type::character_wields_item>( getID(), item().typeId() );
+        choose_best_MA_style( this );
         return true;
     }
 
@@ -1578,6 +1619,7 @@ bool npc::wield( item &it )
     if( get_player_view().sees( pos() ) ) {
         add_msg_if_npc( m_info, _( "<npcname> wields a %s." ),  weapon->tname() );
     }
+    choose_best_MA_style( this );
     invalidate_range_cache();
     return true;
 }
