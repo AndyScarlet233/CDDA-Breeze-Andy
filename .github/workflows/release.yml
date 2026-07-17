@@ -10,7 +10,6 @@ on:
       - "no"
     paths:
       - '.github/workflows/release.yml'
-      - 'android/**'
       - 'build-data/**'
       - 'cataclysm-launcher'
       - 'data/**'
@@ -90,6 +89,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Andy 分支暂时只发布 Windows 版；Android 签名恢复后再加入矩阵。
         include:
           - name: Windows Tiles x64 MSVC
             artifact: windows-tiles-x64-msvc
@@ -98,13 +98,6 @@ jobs:
             mxe: none
             ext: zip
             content: application/zip
-          - name: Android x64
-            os: ubuntu-latest
-            mxe: none
-            android: arm64
-            artifact: android-x64
-            ext: apk
-            content: application/apk
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     env:
