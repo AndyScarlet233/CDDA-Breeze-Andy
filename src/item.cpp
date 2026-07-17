@@ -148,6 +148,7 @@ static const item_category_id item_category_food( "food" );
 static const item_category_id item_category_maps( "maps" );
 static const item_category_id item_category_spare_parts( "spare_parts" );
 static const item_category_id item_category_tools( "tools" );
+static const item_category_id item_category_veh_parts( "veh_parts" );
 static const item_category_id item_category_weapons( "weapons" );
 
 static const itype_id itype_barrel_small( "barrel_small" );
@@ -10426,7 +10427,10 @@ bool item::mod_damage( int qty, damage_type dt )
     if( qty > 0 && !destroy ) {
         int degrade = std::max( get_dmg_lvl_internal( damage_, min_damage(), max_damage() ) - dmg_lvl, 0 );
         int incr = type->degrade_increments();
-        if( incr > 0 ) {
+        const bool apply_degradation =
+            get_category_shallow().get_id() != item_category_veh_parts ||
+            get_option<bool>( "VEHICLE_PART_DEGRADATION" );
+        if( incr > 0 && apply_degradation ) {
             degradation_ += degrade * ( max_damage() - min_damage() ) / incr;
         }
     }

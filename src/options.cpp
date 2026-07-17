@@ -2496,6 +2496,12 @@ void options_manager::add_options_world_default()
     add("怪物的等级动态变化", "world_default", to_translation("怪物的等级动态变化"), to_translation("当此选项的值为 是 时，怪物的等级将动态变化。当此选项的值为 否 时，怪物的等级默认为0级。等级影响速度和近战伤害。"), false);
     add("怪物可以积累经验值而升级", "world_default", to_translation("怪物可以积累经验值而升级"), to_translation("当此选项的值为 是 时，怪物可以通过击杀敌人来获取经验值，当经验值达到标准后，怪物即可升级。"), false);
 
+    add( "VEHICLE_PART_DEGRADATION", "world_default",
+         to_translation( "载具部件永久损耗" ),
+         to_translation( "开启后，载具部件受损跨越损坏等级时，会永久损失一部分可修复耐久上限。关闭后，新产生的损伤不会继续降低耐久上限，但已经发生的永久损耗不会自动恢复。" ),
+         true
+       );
+
     add_empty_line();
 
     add( "DEFAULT_REGION", "world_default", to_translation( "Default region type" ),
