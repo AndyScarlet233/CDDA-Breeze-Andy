@@ -51,7 +51,9 @@ jobs:
           tag: ${{ steps.generate_env_vars.outputs.tag_name }}  
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Push tag
         id: tag_version
         uses: mathieudutour/github-tag-action@v5.5
@@ -60,17 +62,43 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           custom_tag: ${{ steps.generate_env_vars.outputs.tag_name }}
           tag_prefix: ""
-      - name: "Generate release notes"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Generate commit release notes"
+        shell: bash
         run: |
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "/repos/${{ github.repository }}/releases/generate-notes" \
-            -f tag_name='${{ steps.generate_env_vars.outputs.tag_name }}' \
-            -f target_commitish='${{ github.ref_name }}' \
-            -q .body > CHANGELOG.md
+          CURRENT_TAG='${{ steps.generate_env_vars.outputs.tag_name }}'
+          git fetch --tags --force
+
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || true)"
+
+          {
+            echo "## 本次更新"
+            echo
+
+            if [ -n "$PREVIOUS_TAG" ]; then
+              RANGE="${PREVIOUS_TAG}..${CURRENT_TAG}"
+            else
+              RANGE="${CURRENT_TAG}"
+            fi
+
+            NOTES="$(git log "$RANGE" \
+              --no-merges \
+              --invert-grep \
+              --grep='\[skip release notes\]' \
+              --pretty=format:"- %s ([%h](https://github.com/${GITHUB_REPOSITORY}/commit/%H))")"
+
+            if [ -n "$NOTES" ]; then
+              printf '%s\n' "$NOTES"
+            else
+              echo "- 本次版本仅包含构建或维护调整。"
+            fi
+
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo
+              echo "## 完整变更"
+              echo
+              echo "[比较 ${PREVIOUS_TAG}...${CURRENT_TAG}](https://github.com/${GITHUB_REPOSITORY}/compare/${PREVIOUS_TAG}...${CURRENT_TAG})"
+            fi
+          } > CHANGELOG.md
       - name: Create release
         id: create_release
         uses: actions/create-release@v1
