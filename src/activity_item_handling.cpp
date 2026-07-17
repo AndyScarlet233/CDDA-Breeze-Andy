@@ -696,9 +696,8 @@ static bool vehicle_activity( Character &you, const tripoint_bub_ms &src_loc, in
     const vpart_info &vp = veh->part_info( vpindex );
     if( type == 'r' ) {
         const vehicle_part part = veh->part( vpindex );
-        const int repair_floor = part.damage_floor( false );
-        time_to_take = vp.repair_time( you ) * std::max( part.damage() - repair_floor, 0 ) /
-                       std::max( part.max_damage() - repair_floor, 1 );
+        time_to_take = vp.repair_time( you ) * ( part.damage() - part.degradation() ) /
+                       ( part.max_damage() - part.degradation() );
     } else if( type == 'o' ) {
         time_to_take = vp.removal_time( you );
     }
