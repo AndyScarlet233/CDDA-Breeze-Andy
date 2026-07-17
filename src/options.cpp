@@ -2497,6 +2497,11 @@ void options_manager::add_options_world_default()
     add("怪物可以积累经验值而升级", "world_default", to_translation("怪物可以积累经验值而升级"), to_translation("当此选项的值为 是 时，怪物可以通过击杀敌人来获取经验值，当经验值达到标准后，怪物即可升级。"), false);
 
     add_empty_line();
+    add( "VEHICLE_PART_DEGRADATION", "world_default",
+         to_translation( "载具部件永久损耗" ),
+         to_translation( "开启后，载具部件受损跨越损坏等级时，会永久损失一部分可修复耐久上限。关闭后，载具部件已有和新产生的永久损耗都不会参与耐久与维修计算，可修复至完整耐久；永久损耗数据仍会保留，重新开启后再次生效。" ),
+         true
+       );
 
     add( "DEFAULT_REGION", "world_default", to_translation( "Default region type" ),
          to_translation( "(WIP feature) Determines terrain, shops, plants, and more." ),
