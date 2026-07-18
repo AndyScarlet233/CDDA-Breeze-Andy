@@ -363,9 +363,9 @@
     "symbol": "A",
     "color": "light_cyan",
     "name": {
-      "str": "disconnected split air conditioner"
+      "str": "断电的分体式空调"
     },
-    "description": "A complete split-system air conditioner with its indoor and outdoor heat exchangers joined into a wall-mountable package.  Install it on a wall, connect it to a power grid, then choose comfort, refrigeration, or freezing mode.",
+    "description": "一套完整的分体式空调，室内外换热器被整合成可安装在墙上的整机。将其安装到墙面并接入电网后，可选择舒适、冷藏或冷冻模式。",
     "longest_side": "110 cm",
     "material": [
       "steel",

@@ -1654,7 +1654,7 @@
     "type": "field_type",
     "intensity_levels": [
       {
-        "name": "conditioned air",
+        "name": "舒适冷风",
         "sym": "&",
         "convection_temperature_mod": -18
       }
@@ -1670,7 +1670,7 @@
     "type": "field_type",
     "intensity_levels": [
       {
-        "name": "refrigerated air",
+        "name": "冷藏冷风",
         "sym": "&",
         "convection_temperature_mod": -40
       }
@@ -1686,7 +1686,7 @@
     "type": "field_type",
     "intensity_levels": [
       {
-        "name": "freezing air",
+        "name": "冷冻冷风",
         "sym": "&",
         "convection_temperature_mod": -72
       }
@@ -1702,7 +1702,7 @@
     "type": "field_type",
     "intensity_levels": [
       {
-        "name": "air conditioner waste heat",
+        "name": "空调废热",
         "sym": "&",
         "convection_temperature_mod": 55
       }

@@ -706,12 +706,12 @@ void veh_app_interact::set_appliance_mode()
         return;
     }
     if( pt.enabled ) {
-        popup( _( "Turn the appliance off before switching its operating mode." ) );
+        popup( _( "切换运行模式前，请先关闭这台家电。" ) );
         return;
     }
 
     uilist menu;
-    menu.text = _( "Choose operating mode" );
+    menu.text = _( "选择运行模式" );
     const int current = std::clamp( static_cast<int>( pt.get_base().get_var( "appliance_mode", 0.0 ) ),
                                     0, static_cast<int>( modes.size() ) - 1 );
     for( size_t i = 0; i < modes.size(); ++i ) {
@@ -719,13 +719,13 @@ void veh_app_interact::set_appliance_mode()
         menu.addentry( static_cast<int>( i ), true, MENU_AUTOASSIGN,
                        string_format( "%s  %d–%d °C%s", mode.name.translated(),
                                       mode.lower_temperature_c, mode.upper_temperature_c,
-                                      static_cast<int>( i ) == current ? _( " (current)" ) : "" ) );
+                                      static_cast<int>( i ) == current ? _( " （当前）" ) : "" ) );
     }
     menu.query();
     if( menu.ret >= 0 && static_cast<size_t>( menu.ret ) < modes.size() ) {
         pt.get_base().set_var( "appliance_mode", menu.ret );
-        pt.get_base().set_var( "appliance_compressor", 0 );
-        add_msg( _( "You set the %s to %s mode." ), veh->name, modes[menu.ret].name.translated() );
+
+        add_msg( _( "你将%s设为%s模式。" ), veh->name, modes[menu.ret].name.translated() );
     }
 }
 
@@ -784,7 +784,7 @@ void veh_app_interact::populate_app_actions()
             set_appliance_mode();
         } );
         imenu.addentry( -1, !mode_part.enabled, 'M',
-                        string_format( _( "Switch operating mode: %s" ),
+                        string_format( _( "切换运行模式：%s" ),
                                        mode_part.info().appliance_modes[selected].name.translated() ) );
     }
 

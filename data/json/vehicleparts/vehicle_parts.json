@@ -3307,7 +3307,7 @@
     "type": "vehicle_part",
     "id": "ap_split_air_conditioner",
     "name": {
-      "str": "split air conditioner"
+      "str": "分体式空调"
     },
     "symbol": "A",
     "looks_like": "f_air_conditioner",
@@ -3319,8 +3319,8 @@
     "broken_color": "dark_gray",
     "damage_modifier": 80,
     "durability": 180,
-    "description": "A wall-mounted split air conditioner.  Its front side cools the room while the rear side dumps waste heat.  The compressor draws 600 W only while the thermostat calls for cooling.",
-    "epower": -2,
+    "description": "固定在墙上的分体式空调。正面向房间排出冷风，背面排出废热。开启后持续运行，舒适、冷藏、冷冻模式分别固定消耗250瓦、375瓦、500瓦电力；切换模式前需要先关闭空调。",
+    "epower": -250,
     "item": "split_air_conditioner",
     "location": "structure",
     "requirements": {
@@ -3393,38 +3393,43 @@
     "flags": [
       "APPLIANCE",
       "WALL_MOUNTED",
-      "ENABLED_DRAINS_EPOWER"
+      "ENABLED_DRAINS_EPOWER",
+      "CTRL_ELECTRONIC",
+      "COOLER"
     ],
     "appliance_modes": [
       {
         "id": "comfort",
-        "name": "comfort",
+        "name": "舒适",
         "lower_temperature_c": 21,
         "upper_temperature_c": 24,
         "active_power_w": 600,
         "idle_power_w": 2,
         "cold_field": "fd_aircon_cold_comfort",
-        "hot_field": "fd_aircon_waste_heat"
+        "hot_field": "fd_aircon_waste_heat",
+        "epower": -250
       },
       {
         "id": "refrigeration",
-        "name": "refrigeration",
+        "name": "冷藏",
         "lower_temperature_c": 2,
         "upper_temperature_c": 5,
         "active_power_w": 600,
         "idle_power_w": 2,
         "cold_field": "fd_aircon_cold_refrigeration",
-        "hot_field": "fd_aircon_waste_heat"
+        "hot_field": "fd_aircon_waste_heat",
+        "epower": -375
       },
       {
         "id": "freezing",
-        "name": "freezing",
+        "name": "冷冻",
         "lower_temperature_c": -18,
         "upper_temperature_c": -12,
         "active_power_w": 600,
         "idle_power_w": 2,
         "cold_field": "fd_aircon_cold_freezing",
-        "hot_field": "fd_aircon_waste_heat"
+        "hot_field": "fd_aircon_waste_heat",
+        "epower": -500
       }
     ],
     "breaks_into": [
