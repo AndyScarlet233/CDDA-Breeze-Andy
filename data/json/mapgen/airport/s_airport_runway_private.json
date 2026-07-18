@@ -34,7 +34,7 @@
         "................................................c_d____________________..........................._b________________b_.........................."
       ],
       "terrain": { ".": "t_region_groundcover_urban", "_": "t_pavement", "b": "t_pavement_y", "c": "t_chainfence", "d": "t_conveyor" },
-      "place_vehicles": [ { "vehicle": "personal_aircraft_airport", "x": 72, "y": 13, "chance": 25, "rotation": 90, "fuel": 0, "status": -1 } ]
+      "place_vehicles": [ { "vehicle": "personal_aircraft_airport", "x": 84, "y": 13, "chance": 25, "rotation": 90, "fuel": 0, "status": -1 } ]
     }
   },
   {
