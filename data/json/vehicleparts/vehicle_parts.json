@@ -3319,7 +3319,7 @@
     "broken_color": "dark_gray",
     "damage_modifier": 80,
     "durability": 180,
-    "description": "固定在墙上的分体式空调。正面向房间排出冷风，背面排出废热。开启后持续运行，舒适、冷藏、冷冻模式分别固定消耗250瓦、375瓦、500瓦电力；切换模式前需要先关闭空调。",
+    "description": "固定在墙上的分体式空调。正面排出的冷气会向密闭房间逐步扩散，背面排出废热。开启后持续运行，舒适、冷藏、冷冻模式分别固定消耗250瓦、375瓦、500瓦电力；切换模式前需要先关闭空调。",
     "epower": -250,
     "item": "split_air_conditioner",
     "location": "structure",
@@ -3407,7 +3407,9 @@
         "idle_power_w": 2,
         "cold_field": "fd_aircon_cold_comfort",
         "hot_field": "fd_aircon_waste_heat",
-        "epower": -250
+        "epower": -250,
+        "cold_field_qty": 3,
+        "hot_field_qty": 3
       },
       {
         "id": "refrigeration",
@@ -3418,7 +3420,9 @@
         "idle_power_w": 2,
         "cold_field": "fd_aircon_cold_refrigeration",
         "hot_field": "fd_aircon_waste_heat",
-        "epower": -375
+        "epower": -375,
+        "cold_field_qty": 7,
+        "hot_field_qty": 5
       },
       {
         "id": "freezing",
@@ -3429,7 +3433,9 @@
         "idle_power_w": 2,
         "cold_field": "fd_aircon_cold_freezing",
         "hot_field": "fd_aircon_waste_heat",
-        "epower": -500
+        "epower": -500,
+        "cold_field_qty": 12,
+        "hot_field_qty": 7
       }
     ],
     "breaks_into": [

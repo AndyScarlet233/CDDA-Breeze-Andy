@@ -1,7 +1,12 @@
+#include <cstdlib>
+
+#include "character.h"
 #include "game.h"
 #include "handle_liquid.h"
 #include "inventory.h"
 #include "itype.h"
+#include "line.h"
+#include "map.h"
 #include "map_iterator.h"
 #include "messages.h"
 #include "output.h"
@@ -49,6 +54,81 @@ vpart_id vpart_appliance_from_item( const itype_id &item_id )
     }
     debugmsg( "item %s is not base item of any appliance!", item_id.c_str() );
     return vpart_ap_standing_lamp;
+}
+
+static units::angle cardinal_direction_from_delta( const point &delta )
+{
+    if( std::abs( delta.x ) >= std::abs( delta.y ) ) {
+        return delta.x >= 0 ? 0_degrees : 180_degrees;
+    }
+    return delta.y >= 0 ? 90_degrees : 270_degrees;
+}
+
+static bool air_conditioner_direction_is_clear( const tripoint &p,
+        const units::angle &direction )
+{
+    tileray facing( direction );
+    facing.advance();
+    map &here = get_map();
+    const tripoint cold_pos = p + tripoint( facing.dx(), facing.dy(), 0 );
+    const tripoint hot_pos = p - tripoint( facing.dx(), facing.dy(), 0 );
+    return !here.impassable( cold_pos ) && !here.impassable( hot_pos );
+}
+
+bool air_conditioner_has_clear_direction( const tripoint &p )
+{
+    for( const units::angle &direction : { 0_degrees, 90_degrees, 180_degrees, 270_degrees } ) {
+        if( air_conditioner_direction_is_clear( p, direction ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static units::angle choose_air_conditioner_direction( const tripoint &p, Character &who )
+{
+    if( !who.is_avatar() ) {
+        for( const units::angle &direction : { 0_degrees, 90_degrees, 180_degrees, 270_degrees } ) {
+            if( air_conditioner_direction_is_clear( p, direction ) ) {
+                return direction;
+            }
+        }
+        return 0_degrees;
+    }
+
+    const tripoint old_view_offset = who.view_offset;
+    who.view_offset = p - who.pos();
+
+    units::angle direction = 0_degrees;
+    while( true ) {
+        popup( _( "按空格键关闭提示，然后选择新空调的制冷侧并按回车键确认。" ) );
+        const std::optional<tripoint> chosen = g->look_around();
+        if( !chosen ) {
+            continue;
+        }
+
+        const point delta = ( *chosen - p ).xy();
+        if( delta == point_zero ) {
+            continue;
+        }
+        direction = cardinal_direction_from_delta( delta );
+        if( air_conditioner_direction_is_clear( p, direction ) ) {
+            break;
+        }
+        popup( _( "所选方向的制冷侧和废热侧都必须留有一格可通行空间。" ) );
+    }
+
+    who.view_offset = old_view_offset;
+    return direction;
+}
+
+units::angle appliance_install_direction( const tripoint &p, Character &who,
+        const vpart_id &vpart )
+{
+    if( vpart->has_flag( VPFLAG_WALL_MOUNTED ) && !vpart->appliance_modes.empty() ) {
+        return choose_air_conditioner_direction( p, who );
+    }
+    return 0_degrees;
 }
 
 void place_appliance( const tripoint &p, const vpart_id &vpart, const std::optional<item> &base,
@@ -717,8 +797,7 @@ void veh_app_interact::set_appliance_mode()
     for( size_t i = 0; i < modes.size(); ++i ) {
         const appliance_mode_data &mode = modes[i];
         menu.addentry( static_cast<int>( i ), true, MENU_AUTOASSIGN,
-                       string_format( "%s  %d–%d °C%s", mode.name.translated(),
-                                      mode.lower_temperature_c, mode.upper_temperature_c,
+                       string_format( "%s%s", mode.name.translated(),
                                       static_cast<int>( i ) == current ? _( " （当前）" ) : "" ) );
     }
     menu.query();

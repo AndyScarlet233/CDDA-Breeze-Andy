@@ -5224,8 +5224,8 @@ void vehicle::power_parts()
             const tripoint unit_pos = global_part_pos3( part_index );
             const tripoint cold_pos = unit_pos + tripoint( facing.dx(), facing.dy(), 0 );
             const tripoint hot_pos = unit_pos - tripoint( facing.dx(), facing.dy(), 0 );
-            here.add_field( cold_pos, mode.cold_field.id(), 1, 0_turns );
-            here.add_field( hot_pos, mode.hot_field.id(), 1, 0_turns );
+            here.propagate_field( cold_pos, mode.cold_field.id(), mode.cold_field_qty, 3 );
+            here.propagate_field( hot_pos, mode.hot_field.id(), mode.hot_field_qty, 3 );
         }
     }
 }

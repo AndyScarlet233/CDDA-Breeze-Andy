@@ -484,6 +484,8 @@ void vpart_info::load( const JsonObject &jo, const std::string &src )
             assign( mode_jo, "name", mode.name );
             // CDDA-Breeze：墙挂空调固定模式功耗
             assign( mode_jo, "epower", mode.epower );
+            mode.cold_field_qty = mode_jo.get_int( "cold_field_qty", 3 );
+            mode.hot_field_qty = mode_jo.get_int( "hot_field_qty", 3 );
             mode.lower_temperature_c = mode_jo.get_int( "lower_temperature_c" );
             mode.upper_temperature_c = mode_jo.get_int( "upper_temperature_c" );
             mode.active_power_w = mode_jo.get_int( "active_power_w", 600 );
@@ -943,7 +945,8 @@ void vpart_info::check()
         }
 
         for( const appliance_mode_data &mode : part.appliance_modes ) {
-            if( mode.id.empty() || mode.lower_temperature_c >= mode.upper_temperature_c ||
+            if( mode.id.empty() || mode.epower >= 0 || mode.cold_field_qty <= 0 ||
+                mode.hot_field_qty <= 0 || mode.lower_temperature_c >= mode.upper_temperature_c ||
                 mode.active_power_w < 0 || mode.idle_power_w < 0 ||
                 mode.idle_power_w > mode.active_power_w ) {
                 debugmsg( "载具部件%s包含无效的家电运行模式", part.id.c_str() );

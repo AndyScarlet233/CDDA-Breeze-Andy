@@ -1327,62 +1327,6 @@ bool construct::check_ramp_low( const tripoint_bub_ms &p )
     return check_empty_stable( p ) && check_up_OK( p ) && check_nofloor_above( p );
 }
 
-static units::angle cardinal_direction_from_delta( const point &delta )
-{
-    if( std::abs( delta.x ) >= std::abs( delta.y ) ) {
-        return delta.x >= 0 ? 0_degrees : 180_degrees;
-    }
-    return delta.y >= 0 ? 90_degrees : 270_degrees;
-}
-
-static bool air_conditioner_direction_is_clear( const tripoint_bub_ms &p,
-        const units::angle &direction )
-{
-    tileray facing( direction );
-    facing.advance();
-    map &here = get_map();
-    const tripoint cold_pos = p.raw() + tripoint( facing.dx(), facing.dy(), 0 );
-    const tripoint hot_pos = p.raw() - tripoint( facing.dx(), facing.dy(), 0 );
-    return !here.impassable( cold_pos ) && !here.impassable( hot_pos );
-}
-
-static units::angle choose_air_conditioner_direction( const tripoint_bub_ms &p, Character &who )
-{
-    if( !who.is_avatar() ) {
-        for( const units::angle &direction : { 0_degrees, 90_degrees, 180_degrees, 270_degrees } ) {
-            if( air_conditioner_direction_is_clear( p, direction ) ) {
-                return direction;
-            }
-        }
-        return 0_degrees;
-    }
-
-    const tripoint old_view_offset = who.view_offset;
-    who.view_offset = p.raw() - who.pos();
-
-    units::angle direction = 0_degrees;
-    while( true ) {
-        popup( _( "按空格键关闭提示，然后选择新空调的制冷侧并按回车键确认。" ) );
-        const std::optional<tripoint> chosen = g->look_around();
-        if( !chosen ) {
-            continue;
-        }
-
-        const point delta = ( *chosen - p.raw() ).xy();
-        if( delta == point_zero ) {
-            continue;
-        }
-        direction = cardinal_direction_from_delta( delta );
-        if( air_conditioner_direction_is_clear( p, direction ) ) {
-            break;
-        }
-        popup( _( "所选方向的制冷侧和废热侧都必须留有一格可通行空间。" ) );
-    }
-
-    who.view_offset = old_view_offset;
-    return direction;
-}
-
 bool construct::check_no_wiring( const tripoint_bub_ms &p )
 {
     const optional_vpart_position vp = get_map().veh_at( p );
@@ -1400,12 +1344,7 @@ bool construct::check_air_conditioner_wall( const tripoint_bub_ms &p )
         return false;
     }
 
-    for( const units::angle &direction : { 0_degrees, 90_degrees, 180_degrees, 270_degrees } ) {
-        if( air_conditioner_direction_is_clear( p, direction ) ) {
-            return true;
-        }
-    }
-    return false;
+    return air_conditioner_has_clear_direction( p.raw() );
 }
 
 void construct::done_trunk_plank( const tripoint_bub_ms &/*p*/, Character &/*who*/ )
@@ -1614,10 +1553,7 @@ void construct::done_appliance( const tripoint_bub_ms &p, Character &player_char
     const item base = components.front();
     const vpart_id &vpart = vpart_appliance_from_item( base.typeId() );
 
-    units::angle direction = 0_degrees;
-    if( vpart->has_flag( VPFLAG_WALL_MOUNTED ) && !vpart->appliance_modes.empty() ) {
-        direction = choose_air_conditioner_direction( p, player_character );
-    }
+    const units::angle direction = appliance_install_direction( p.raw(), player_character, vpart );
     // TODO: fix point types
     place_appliance( p.raw(), vpart, base, direction );
 }
