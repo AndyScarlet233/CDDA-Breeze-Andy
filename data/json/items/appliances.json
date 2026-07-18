@@ -355,5 +355,23 @@
     "price_postapoc": 10000,
     "symbol": "T",
     "color": "white"
+  },
+  {
+    "type": "GENERIC",
+    "id": "split_air_conditioner",
+    "looks_like": "f_air_conditioner",
+    "symbol": "A",
+    "color": "light_cyan",
+    "name": {
+      "str": "disconnected split air conditioner"
+    },
+    "description": "A complete split-system air conditioner with its indoor and outdoor heat exchangers joined into a wall-mountable package.  Install it on a wall, connect it to a power grid, then choose comfort, refrigeration, or freezing mode.",
+    "longest_side": "110 cm",
+    "material": [
+      "steel",
+      "plastic"
+    ],
+    "volume": "220 L",
+    "weight": "55 kg"
   }
 ]

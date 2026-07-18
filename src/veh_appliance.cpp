@@ -51,7 +51,8 @@ vpart_id vpart_appliance_from_item( const itype_id &item_id )
     return vpart_ap_standing_lamp;
 }
 
-void place_appliance( const tripoint &p, const vpart_id &vpart, const std::optional<item> &base )
+void place_appliance( const tripoint &p, const vpart_id &vpart, const std::optional<item> &base,
+                      units::angle direction )
 {
     map &here = get_map();
     vehicle *veh = here.add_vehicle( vehicle_prototype_none, p, 0_degrees, 0, 0 );
@@ -70,6 +71,9 @@ void place_appliance( const tripoint &p, const vpart_id &vpart, const std::optio
         veh->install_part( point_zero, vpart );
     }
     veh->name = vpart->name();
+    veh->face.init( direction );
+    veh->turn_dir = direction;
+    veh->precalc_mounts( 0, direction, point_zero );
 
     // Update the vehicle cache immediately,
     // or the appliance will be invisible for the first couple of turns.
@@ -693,6 +697,38 @@ void veh_app_interact::unplug()
     act.values.push_back( veh->index_of_part( &vp ) );
 }
 
+void veh_app_interact::set_appliance_mode()
+{
+    const int part_index = veh->part_at( a_point );
+    vehicle_part &pt = veh->part( part_index >= 0 ? part_index : 0 );
+    const std::vector<appliance_mode_data> &modes = pt.info().appliance_modes;
+    if( modes.empty() ) {
+        return;
+    }
+    if( pt.enabled ) {
+        popup( _( "Turn the appliance off before switching its operating mode." ) );
+        return;
+    }
+
+    uilist menu;
+    menu.text = _( "Choose operating mode" );
+    const int current = std::clamp( static_cast<int>( pt.get_base().get_var( "appliance_mode", 0.0 ) ),
+                                    0, static_cast<int>( modes.size() ) - 1 );
+    for( size_t i = 0; i < modes.size(); ++i ) {
+        const appliance_mode_data &mode = modes[i];
+        menu.addentry( static_cast<int>( i ), true, MENU_AUTOASSIGN,
+                       string_format( "%s  %d–%d °C%s", mode.name.translated(),
+                                      mode.lower_temperature_c, mode.upper_temperature_c,
+                                      static_cast<int>( i ) == current ? _( " (current)" ) : "" ) );
+    }
+    menu.query();
+    if( menu.ret >= 0 && static_cast<size_t>( menu.ret ) < modes.size() ) {
+        pt.get_base().set_var( "appliance_mode", menu.ret );
+        pt.get_base().set_var( "appliance_compressor", 0 );
+        add_msg( _( "You set the %s to %s mode." ), veh->name, modes[menu.ret].name.translated() );
+    }
+}
+
 void veh_app_interact::populate_app_actions()
 {
     const std::string ctxt_letters = ctxt.get_available_single_char_hotkeys();
@@ -738,6 +774,19 @@ void veh_app_interact::populate_app_actions()
     imenu.addentry( -1, can_unplug(), ctxt.keys_bound_to( "UNPLUG" ).front(),
                     ctxt.get_action_name( "UNPLUG" ) );
 
+    const int mode_part_index = veh->part_at( a_point );
+    vehicle_part &mode_part = veh->part( mode_part_index >= 0 ? mode_part_index : 0 );
+    if( !mode_part.info().appliance_modes.empty() ) {
+        const int selected = std::clamp(
+                                 static_cast<int>( mode_part.get_base().get_var( "appliance_mode", 0.0 ) ), 0,
+                                 static_cast<int>( mode_part.info().appliance_modes.size() ) - 1 );
+        app_actions.emplace_back( [this]() {
+            set_appliance_mode();
+        } );
+        imenu.addentry( -1, !mode_part.enabled, 'M',
+                        string_format( _( "Switch operating mode: %s" ),
+                                       mode_part.info().appliance_modes[selected].name.translated() ) );
+    }
 
 
     if (veh->is_appliance() && veh->part(0).info().has_flag("CLASSIFIED_DEVICE")) {
