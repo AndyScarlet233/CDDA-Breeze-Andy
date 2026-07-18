@@ -628,11 +628,11 @@ void npc_template::check_consistency()
         }
         for( const matype_id &style : e.second.martial_arts ) {
             if( !style.is_valid() ) {
-                debugmsg( "NPC template %s has invalid martial art %s", e.first.c_str(), style.c_str() );
+                debugmsg( "NPC模板%s包含无效的武术%s", e.first.c_str(), style.c_str() );
             }
         }
         if( e.second.selected_martial_art && !e.second.selected_martial_art->is_valid() ) {
-            debugmsg( "NPC template %s has invalid selected martial art %s", e.first.c_str(),
+            debugmsg( "NPC模板%s指定了无效的默认武术%s", e.first.c_str(),
                       e.second.selected_martial_art->c_str() );
         }
         std::string first_topic = guy.chatbin.first_topic;
@@ -1019,7 +1019,7 @@ void npc::select_best_martial_art( bool announce )
     cached_info.erase( "weapon_value" );
 
     if( announce && starting_style != best_style ) {
-        add_msg_if_player_sees( *this, m_info, _( "%1$s switches to using %2$s!" ),
+        add_msg_if_player_sees( *this, m_info, _( "%1$s改用%2$s！" ),
                                 disp_name(), martial_arts_data->selected_style_name( *this ) );
     }
 }
