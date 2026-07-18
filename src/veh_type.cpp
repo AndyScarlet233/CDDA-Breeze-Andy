@@ -96,6 +96,7 @@ static const std::unordered_map<std::string, vpart_bitflags> vpart_bitflag_map =
     { "BALLOON", VPFLAG_BALLOON },
     { "PROPELLER", VPFLAG_PROPELLER },
     { "LADDER", VPFLAG_LADDER },
+    { "WALL_MOUNTED", VPFLAG_WALL_MOUNTED },
     { "FLOATS", VPFLAG_FLOATS },
     { "DOME_LIGHT", VPFLAG_DOME_LIGHT },
     { "AISLE_LIGHT", VPFLAG_AISLE_LIGHT },
@@ -474,6 +475,22 @@ void vpart_info::load( const JsonObject &jo, const std::string &src )
     assign( jo, "comfort", def.comfort );
     assign( jo, "floor_bedding_warmth", def.floor_bedding_warmth );
     assign( jo, "bonus_fire_warmth_feet", def.bonus_fire_warmth_feet );
+
+    if( jo.has_array( "appliance_modes" ) ) {
+        def.appliance_modes.clear();
+        for( JsonObject mode_jo : jo.get_array( "appliance_modes" ) ) {
+            appliance_mode_data mode;
+            mode.id = mode_jo.get_string( "id" );
+            assign( mode_jo, "name", mode.name );
+            mode.lower_temperature_c = mode_jo.get_int( "lower_temperature_c" );
+            mode.upper_temperature_c = mode_jo.get_int( "upper_temperature_c" );
+            mode.active_power_w = mode_jo.get_int( "active_power_w", 600 );
+            mode.idle_power_w = mode_jo.get_int( "idle_power_w", 2 );
+            mode.cold_field = field_type_str_id( mode_jo.get_string( "cold_field" ) );
+            mode.hot_field = field_type_str_id( mode_jo.get_string( "hot_field" ) );
+            def.appliance_modes.emplace_back( std::move( mode ) );
+        }
+    }
 
     if( jo.has_member( "transform_terrain" ) ) {
         JsonObject jttd = jo.get_object( "transform_terrain" );
@@ -920,6 +937,18 @@ void vpart_info::check()
             if( !( e.first.is_null() || e.first.is_valid() ) || e.second < 0 ) {
                 debugmsg( "vehicle part %s has unknown or incorrectly specified repair requirements %s",
                           part.id.c_str(), e.first.c_str() );
+            }
+        }
+
+        for( const appliance_mode_data &mode : part.appliance_modes ) {
+            if( mode.id.empty() || mode.lower_temperature_c >= mode.upper_temperature_c ||
+                mode.active_power_w < 0 || mode.idle_power_w < 0 ||
+                mode.idle_power_w > mode.active_power_w ) {
+                debugmsg( "vehicle part %s has an invalid appliance mode", part.id.c_str() );
+            }
+            if( !mode.cold_field.is_valid() || !mode.hot_field.is_valid() ) {
+                debugmsg( "vehicle part %s appliance mode %s has invalid temperature fields",
+                          part.id.c_str(), mode.id );
             }
         }
 

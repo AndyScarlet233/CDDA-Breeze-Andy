@@ -153,6 +153,7 @@ static bool check_no_trap( const tripoint_bub_ms & );
 static bool check_ramp_low( const tripoint_bub_ms & );
 static bool check_ramp_high( const tripoint_bub_ms & );
 static bool check_no_wiring( const tripoint_bub_ms & );
+static bool check_air_conditioner_wall( const tripoint_bub_ms & );
 
 // Special actions to be run post-terrain-mod
 static void done_nothing( const tripoint_bub_ms &, Character & ) {}
@@ -1326,6 +1327,62 @@ bool construct::check_ramp_low( const tripoint_bub_ms &p )
     return check_empty_stable( p ) && check_up_OK( p ) && check_nofloor_above( p );
 }
 
+static units::angle cardinal_direction_from_delta( const point &delta )
+{
+    if( std::abs( delta.x ) >= std::abs( delta.y ) ) {
+        return delta.x >= 0 ? 0_degrees : 180_degrees;
+    }
+    return delta.y >= 0 ? 90_degrees : 270_degrees;
+}
+
+static bool air_conditioner_direction_is_clear( const tripoint_bub_ms &p,
+        const units::angle &direction )
+{
+    tileray facing( direction );
+    facing.advance();
+    map &here = get_map();
+    const tripoint cold_pos = p.raw() + tripoint( facing.dx(), facing.dy(), 0 );
+    const tripoint hot_pos = p.raw() - tripoint( facing.dx(), facing.dy(), 0 );
+    return !here.impassable( cold_pos ) && !here.impassable( hot_pos );
+}
+
+static units::angle choose_air_conditioner_direction( const tripoint_bub_ms &p, Character &who )
+{
+    if( !who.is_avatar() ) {
+        for( const units::angle &direction : { 0_degrees, 90_degrees, 180_degrees, 270_degrees } ) {
+            if( air_conditioner_direction_is_clear( p, direction ) ) {
+                return direction;
+            }
+        }
+        return 0_degrees;
+    }
+
+    const tripoint old_view_offset = who.view_offset;
+    who.view_offset = p.raw() - who.pos();
+
+    units::angle direction = 0_degrees;
+    while( true ) {
+        popup( _( "Press space, choose the side the new air conditioner should cool, and confirm with enter." ) );
+        const std::optional<tripoint> chosen = g->look_around();
+        if( !chosen ) {
+            continue;
+        }
+
+        const point delta = ( *chosen - p.raw() ).xy();
+        if( delta == point_zero ) {
+            continue;
+        }
+        direction = cardinal_direction_from_delta( delta );
+        if( air_conditioner_direction_is_clear( p, direction ) ) {
+            break;
+        }
+        popup( _( "That direction needs an open tile on both the cooling side and the waste-heat side." ) );
+    }
+
+    who.view_offset = old_view_offset;
+    return direction;
+}
+
 bool construct::check_no_wiring( const tripoint_bub_ms &p )
 {
     const optional_vpart_position vp = get_map().veh_at( p );
@@ -1335,6 +1392,20 @@ bool construct::check_no_wiring( const tripoint_bub_ms &p )
 
     const vehicle &veh_target = vp->vehicle();
     return !veh_target.has_tag( flag_WIRING );
+}
+
+bool construct::check_air_conditioner_wall( const tripoint_bub_ms &p )
+{
+    if( get_map().veh_at( p ) ) {
+        return false;
+    }
+
+    for( const units::angle &direction : { 0_degrees, 90_degrees, 180_degrees, 270_degrees } ) {
+        if( air_conditioner_direction_is_clear( p, direction ) ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void construct::done_trunk_plank( const tripoint_bub_ms &/*p*/, Character &/*who*/ )
@@ -1523,7 +1594,7 @@ void construct::done_wiring( const tripoint_bub_ms &p, Character &/*who*/ )
     }
 }
 
-void construct::done_appliance( const tripoint_bub_ms &p, Character & )
+void construct::done_appliance( const tripoint_bub_ms &p, Character &player_character )
 {
     map &here = get_map();
     partial_con *pc = here.partial_con_at( p );
@@ -1543,8 +1614,12 @@ void construct::done_appliance( const tripoint_bub_ms &p, Character & )
     const item base = components.front();
     const vpart_id &vpart = vpart_appliance_from_item( base.typeId() );
 
+    units::angle direction = 0_degrees;
+    if( vpart->has_flag( VPFLAG_WALL_MOUNTED ) && !vpart->appliance_modes.empty() ) {
+        direction = choose_air_conditioner_direction( p, player_character );
+    }
     // TODO: fix point types
-    place_appliance( p.raw(), vpart, base );
+    place_appliance( p.raw(), vpart, base, direction );
 }
 
 void construct::done_deconstruct( const tripoint_bub_ms &p, Character &player_character )
@@ -2014,7 +2089,8 @@ void load_construction( const JsonObject &jo )
             { "check_no_trap", construct::check_no_trap },
             { "check_ramp_low", construct::check_ramp_low },
             { "check_ramp_high", construct::check_ramp_high },
-            { "check_no_wiring", construct::check_no_wiring }
+            { "check_no_wiring", construct::check_no_wiring },
+            { "check_air_conditioner_wall", construct::check_air_conditioner_wall }
         }
     };
     static const std::map<std::string, void( * )( const tripoint_bub_ms &, Character & )>

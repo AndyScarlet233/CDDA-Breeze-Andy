@@ -3302,5 +3302,182 @@
       "removal": { "skills": [ [ "mechanics", 4 ] ], "time": "60 m", "using": [ [ "vehicle_weld_removal", 1 ] ] }
     },
     "flags": [ "OBSTACLE", "HALF_BOARD","AUTONOMOUS_CONTROL"]
+  },
+  {
+    "type": "vehicle_part",
+    "id": "ap_split_air_conditioner",
+    "name": {
+      "str": "split air conditioner"
+    },
+    "symbol": "A",
+    "looks_like": "f_air_conditioner",
+    "categories": [
+      "utility"
+    ],
+    "color": "light_cyan",
+    "broken_symbol": "#",
+    "broken_color": "dark_gray",
+    "damage_modifier": 80,
+    "durability": 180,
+    "description": "A wall-mounted split air conditioner.  Its front side cools the room while the rear side dumps waste heat.  The compressor draws 600 W only while the thermostat calls for cooling.",
+    "epower": -2,
+    "item": "split_air_conditioner",
+    "location": "structure",
+    "requirements": {
+      "install": {
+        "skills": [
+          [
+            "mechanics",
+            3
+          ],
+          [
+            "electronics",
+            3
+          ]
+        ],
+        "time": "60 m",
+        "using": [
+          [
+            "vehicle_wrench_2",
+            1
+          ],
+          [
+            "soldering_standard",
+            5
+          ]
+        ]
+      },
+      "removal": {
+        "skills": [
+          [
+            "mechanics",
+            2
+          ],
+          [
+            "electronics",
+            2
+          ]
+        ],
+        "time": "30 m",
+        "using": [
+          [
+            "vehicle_wrench_2",
+            1
+          ]
+        ]
+      },
+      "repair": {
+        "skills": [
+          [
+            "mechanics",
+            4
+          ],
+          [
+            "electronics",
+            4
+          ]
+        ],
+        "time": "60 m",
+        "using": [
+          [
+            "repair_welding_standard",
+            1
+          ],
+          [
+            "soldering_standard",
+            8
+          ]
+        ]
+      }
+    },
+    "flags": [
+      "APPLIANCE",
+      "WALL_MOUNTED",
+      "ENABLED_DRAINS_EPOWER"
+    ],
+    "appliance_modes": [
+      {
+        "id": "comfort",
+        "name": "comfort",
+        "lower_temperature_c": 21,
+        "upper_temperature_c": 24,
+        "active_power_w": 600,
+        "idle_power_w": 2,
+        "cold_field": "fd_aircon_cold_comfort",
+        "hot_field": "fd_aircon_waste_heat"
+      },
+      {
+        "id": "refrigeration",
+        "name": "refrigeration",
+        "lower_temperature_c": 2,
+        "upper_temperature_c": 5,
+        "active_power_w": 600,
+        "idle_power_w": 2,
+        "cold_field": "fd_aircon_cold_refrigeration",
+        "hot_field": "fd_aircon_waste_heat"
+      },
+      {
+        "id": "freezing",
+        "name": "freezing",
+        "lower_temperature_c": -18,
+        "upper_temperature_c": -12,
+        "active_power_w": 600,
+        "idle_power_w": 2,
+        "cold_field": "fd_aircon_cold_freezing",
+        "hot_field": "fd_aircon_waste_heat"
+      }
+    ],
+    "breaks_into": [
+      {
+        "item": "sheet_metal",
+        "count": [
+          2,
+          5
+        ]
+      },
+      {
+        "item": "scrap",
+        "count": [
+          4,
+          8
+        ]
+      },
+      {
+        "item": "cu_pipe",
+        "count": [
+          2,
+          5
+        ]
+      },
+      {
+        "item": "cable",
+        "charges": [
+          4,
+          12
+        ]
+      },
+      {
+        "item": "hose",
+        "count": [
+          1,
+          2
+        ]
+      },
+      {
+        "item": "thermostat",
+        "count": 1
+      },
+      {
+        "item": "refrigerant_tank",
+        "count": 1
+      },
+      {
+        "item": "motor_small",
+        "count": 1
+      }
+    ],
+    "damage_reduction": {
+      "all": 20
+    }
   }
 ]
