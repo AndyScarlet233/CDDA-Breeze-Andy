@@ -927,7 +927,7 @@ static void grab()
             return;
         }
         if( vp.part_with_feature( VPFLAG_WALL_MOUNTED, false ) ) {
-            add_msg( m_info, _( "You can't move that, it's attached to the wall." ) );
+            add_msg( m_info, _( "它固定在墙上，无法移动。" ) );
             return;
         }
         if (vp->vehicle().has_tag(flag_CANT_DRAG)) {

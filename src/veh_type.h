@@ -150,6 +150,8 @@ struct vpslot_ladder {
 struct appliance_mode_data {
     std::string id;
     translation name;
+    /** CDDA-Breeze：墙挂空调固定模式功耗 */
+    int epower = 0;
     int lower_temperature_c = 21;
     int upper_temperature_c = 24;
     int active_power_w = 600;

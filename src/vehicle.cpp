@@ -88,7 +88,6 @@ static const std::string part_location_structure( "structure" );
 static const std::string part_location_center( "center" );
 static const std::string part_location_onroof( "on_roof" );
 static const std::string var_appliance_mode( "appliance_mode" );
-static const std::string var_appliance_compressor( "appliance_compressor" );
 
 static const activity_id ACT_VEHICLE( "ACT_VEHICLE" );
 
@@ -1118,14 +1117,14 @@ int vehicle::part_epower_w( const int index ) const
 {
     const vehicle_part &pt = parts[index];
     const vpart_info &info = part_info( index );
-    if( !info.appliance_modes.empty() ) {
-        const int selected = std::clamp( static_cast<int>( pt.base.get_var( var_appliance_mode, 0.0 ) ),
-                                         0, static_cast<int>( info.appliance_modes.size() ) - 1 );
-        const appliance_mode_data &mode = info.appliance_modes[selected];
-        const bool compressor_on = pt.base.get_var( var_appliance_compressor, 0.0 ) > 0.5;
-        return -( compressor_on ? mode.active_power_w : mode.idle_power_w );
-    }
     int e = info.epower;
+    if( !info.appliance_modes.empty() ) {
+        const size_t mode_index = static_cast<size_t>( std::clamp(
+                                      static_cast<int>( pt.base.get_var( var_appliance_mode, 0.0 ) ),
+                                      0, static_cast<int>( info.appliance_modes.size() ) - 1 ) );
+        // CDDA-Breeze：墙挂空调固定模式功耗
+        e = info.appliance_modes[mode_index].epower;
+    }
     if( e < 0 ) {
         return e; // Consumers always draw full power, even if broken
     }
@@ -4825,7 +4824,7 @@ int vehicle::total_accessory_epower_w() const
     for( int part : accessories ) {
         const vehicle_part &vp = parts[part];
         if( vp.enabled ) {
-            epower += vp.info().appliance_modes.empty() ? vp.info().epower : part_epower_w( part );
+            epower += part_epower_w( part );
         }
     }
     return epower;
@@ -5103,31 +5102,6 @@ void vehicle::update_alternator_load()
 
 void vehicle::power_parts()
 {
-    for( const int part_index : accessories ) {
-        vehicle_part &pt = parts[part_index];
-        const vpart_info &info = pt.info();
-        if( !pt.enabled || info.appliance_modes.empty() || pt.is_unavailable() ) {
-            continue;
-        }
-
-        const int selected = std::clamp( static_cast<int>( pt.base.get_var( var_appliance_mode, 0.0 ) ),
-                                         0, static_cast<int>( info.appliance_modes.size() ) - 1 );
-        const appliance_mode_data &mode = info.appliance_modes[selected];
-        tileray facing( face.dir() + pt.direction );
-        facing.advance();
-        const tripoint cold_pos = global_part_pos3( part_index ) +
-                                  tripoint( facing.dx(), facing.dy(), 0 );
-
-        bool compressor_on = pt.base.get_var( var_appliance_compressor, 0.0 ) > 0.5;
-        const double sensed_c = units::to_celsius( get_weather().get_temperature( cold_pos ) );
-        if( compressor_on && sensed_c <= mode.lower_temperature_c ) {
-            compressor_on = false;
-        } else if( !compressor_on && sensed_c >= mode.upper_temperature_c ) {
-            compressor_on = true;
-        }
-        pt.base.set_var( var_appliance_compressor, compressor_on ? 1 : 0 );
-    }
-
     update_alternator_load();
     // Things that drain energy: engines and accessories.
     int engine_epower = total_engine_epower_w();
@@ -5238,8 +5212,7 @@ void vehicle::power_parts()
         for( const int part_index : accessories ) {
             vehicle_part &pt = parts[part_index];
             const vpart_info &info = pt.info();
-            if( !pt.enabled || info.appliance_modes.empty() || pt.is_unavailable() ||
-                pt.base.get_var( var_appliance_compressor, 0.0 ) <= 0.5 ) {
+            if( !pt.enabled || info.appliance_modes.empty() || pt.is_unavailable() ) {
                 continue;
             }
 

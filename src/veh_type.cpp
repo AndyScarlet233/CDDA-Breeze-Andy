@@ -482,6 +482,8 @@ void vpart_info::load( const JsonObject &jo, const std::string &src )
             appliance_mode_data mode;
             mode.id = mode_jo.get_string( "id" );
             assign( mode_jo, "name", mode.name );
+            // CDDA-Breeze：墙挂空调固定模式功耗
+            assign( mode_jo, "epower", mode.epower );
             mode.lower_temperature_c = mode_jo.get_int( "lower_temperature_c" );
             mode.upper_temperature_c = mode_jo.get_int( "upper_temperature_c" );
             mode.active_power_w = mode_jo.get_int( "active_power_w", 600 );
@@ -944,10 +946,10 @@ void vpart_info::check()
             if( mode.id.empty() || mode.lower_temperature_c >= mode.upper_temperature_c ||
                 mode.active_power_w < 0 || mode.idle_power_w < 0 ||
                 mode.idle_power_w > mode.active_power_w ) {
-                debugmsg( "vehicle part %s has an invalid appliance mode", part.id.c_str() );
+                debugmsg( "载具部件%s包含无效的家电运行模式", part.id.c_str() );
             }
             if( !mode.cold_field.is_valid() || !mode.hot_field.is_valid() ) {
-                debugmsg( "vehicle part %s appliance mode %s has invalid temperature fields",
+                debugmsg( "载具部件%s的家电运行模式%s使用了无效的温度场",
                           part.id.c_str(), mode.id );
             }
         }

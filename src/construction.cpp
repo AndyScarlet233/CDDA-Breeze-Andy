@@ -1362,7 +1362,7 @@ static units::angle choose_air_conditioner_direction( const tripoint_bub_ms &p, 
 
     units::angle direction = 0_degrees;
     while( true ) {
-        popup( _( "Press space, choose the side the new air conditioner should cool, and confirm with enter." ) );
+        popup( _( "按空格键关闭提示，然后选择新空调的制冷侧并按回车键确认。" ) );
         const std::optional<tripoint> chosen = g->look_around();
         if( !chosen ) {
             continue;
@@ -1376,7 +1376,7 @@ static units::angle choose_air_conditioner_direction( const tripoint_bub_ms &p, 
         if( air_conditioner_direction_is_clear( p, direction ) ) {
             break;
         }
-        popup( _( "That direction needs an open tile on both the cooling side and the waste-heat side." ) );
+        popup( _( "所选方向的制冷侧和废热侧都必须留有一格可通行空间。" ) );
     }
 
     who.view_offset = old_view_offset;
