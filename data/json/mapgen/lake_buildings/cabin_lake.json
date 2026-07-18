@@ -133,7 +133,7 @@
       "palettes": [ "roof_palette" ],
       "terrain": { ".": "t_shingle_flat_roof" },
       "furniture": { "W": "f_chimney" },
-      "place_vehicles": [ { "vehicle": "airboat", "x": 13, "y": 14, "chance": 15, "rotation": 0, "fuel": 0, "status": -1 } ]
+      "place_vehicles": [ { "vehicle": "airboat", "x": 12, "y": 14, "chance": 15, "rotation": 0, "fuel": 0, "status": -1 } ]
     }
   },
   {
