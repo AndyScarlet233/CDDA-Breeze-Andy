@@ -1,0 +1,16 @@
+CDDA-Breeze 武术与NPC接口
+
+本改动加入三项功能：
+1. 队友的战斗命令中可以手动选择其已知武术。
+2. NPC每次更换武器或切回空手时，会比较自己已知武术对当前武器的实际近战评分，并自动选择评分最高的流派。
+3. NPC模板支持直接指定开局武术。
+
+NPC模板写法：
+
+  "martial_arts": [ "style_karate", "style_judo" ],
+  "martial_art": "style_karate"
+
+martial_arts 是角色已知的全部额外武术；martial_art 是开局选中的武术。
+若 martial_art 未写入 martial_arts，游戏会自动将其加入已知列表。
+若只写 martial_arts 而不写 martial_art，NPC会根据出生时手持武器自动选择最合适的流派。
+手动指定的流派会在当前武器不变时保留；NPC下次更换武器后仍会重新自动评估。
