@@ -9,6 +9,7 @@
 #include "type_id.h"
 
 class Character;
+class avatar;
 class JsonObject;
 class JsonOut;
 class item;
@@ -32,6 +33,7 @@ class character_martial_arts
         // checks that style selected is one that is known, otherwise resets it
         void selected_style_check();
         /** Creates the UI and handles player input for picking martial arts styles */
+        bool pick_style( const avatar &you );
         bool pick_style( Character &you );
 
         bool knows_selected_style() const;

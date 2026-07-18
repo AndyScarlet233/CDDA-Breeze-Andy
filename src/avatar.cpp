@@ -1762,6 +1762,11 @@ void avatar::add_pain_msg( int val, const bodypart_id &bp ) const
     }
 }
 
+bool character_martial_arts::pick_style( const avatar &you )
+{
+    return pick_style( static_cast<Character &>( const_cast<avatar &>( you ) ) );
+}
+
 bool character_martial_arts::pick_style( Character &you ) // Style selection menu
 {
     enum style_selection {
