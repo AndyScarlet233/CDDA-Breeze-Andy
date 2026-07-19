@@ -133,7 +133,7 @@ static const efftype_id effect_teleglow( "teleglow" );
 static const efftype_id effect_tetanus( "tetanus" );
 static const efftype_id effect_weak_antibiotic( "weak_antibiotic" );
 
-static const field_type_id fd_crafting_spot( "fd_crafting_spot" );
+static const field_type_str_id fd_crafting_spot( "fd_crafting_spot" );
 
 static const furn_str_id furn_f_diesel_tank( "f_diesel_tank" );
 static const furn_str_id furn_f_gas_tank( "f_gas_tank" );

@@ -104,7 +104,7 @@ static const string_id<struct furn_t> furn_f_fake_bench_hands( "f_fake_bench_han
 
 static const string_id<struct furn_t> furn_f_ground_crafting_spot( "f_ground_crafting_spot" );
 
-static const field_type_id fd_crafting_spot( "fd_crafting_spot" );
+static const field_type_str_id fd_crafting_spot( "fd_crafting_spot" );
 
 static const trait_id trait_BURROW( "BURROW" );
 static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
