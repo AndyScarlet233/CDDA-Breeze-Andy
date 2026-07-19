@@ -81,7 +81,7 @@ static const furn_str_id furn_f_console_broken( "f_console_broken" );
 static const furn_str_id furn_f_machinery_electronic( "f_machinery_electronic" );
 static const furn_str_id furn_f_ground_crafting_spot( "f_ground_crafting_spot" );
 
-static const field_type_id fd_crafting_spot( "fd_crafting_spot" );
+static const field_type_str_id fd_crafting_spot( "fd_crafting_spot" );
 
 static const item_group_id Item_spawn_data_allclothes( "allclothes" );
 static const item_group_id Item_spawn_data_grave( "grave" );

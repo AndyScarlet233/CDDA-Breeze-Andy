@@ -61,7 +61,7 @@ static const std::string flag_BLIND_HARD( "BLIND_HARD" );
 
 static const limb_score_id limb_score_manip( "manip" );
 static const string_id<struct furn_t> furn_f_ground_crafting_spot( "f_ground_crafting_spot" );
-static const field_type_id fd_crafting_spot( "fd_crafting_spot" );
+static const field_type_str_id fd_crafting_spot( "fd_crafting_spot" );
 
 class npc;
 
