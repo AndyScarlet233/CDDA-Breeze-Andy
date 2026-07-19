@@ -94,6 +94,10 @@ static std::map<size_t, inclusive_rectangle<point>> draw_recipe_subtabs(
             const recipe_subset &available_recipes, TAB_MODE mode,
             std::map<std::string, bool> &unread );
 
+static int choose_crafter( const std::vector<Character *> &crafting_group,
+                           const std::map<Character *, recipe_subset> &recipes_by_crafter,
+                           int current_crafter, const recipe *rec );
+
 static std::string peek_related_recipe(const recipe* current, const recipe_subset& available,
     Character& crafter);
 static int related_menu_fill( uilist &rmenu,
@@ -166,22 +170,25 @@ static bool cannot_gain_skill_or_prof(const Character& crafter, const recipe& re
 namespace
 {
 struct availability {
-    explicit availability(Character& _crafter, const recipe* r, int batch_size = 1) :
-        crafter(_crafter) {
+    explicit availability( Character &_crafter, const recipe *r, int batch_size = 1,
+                           const recipe_subset *known_recipes = nullptr ) :
+        crafter( _crafter ) {
             rec = r;
             const inventory& inv = crafter.crafting_inventory();
             auto all_items_filter = r->get_component_filter( recipe_filter_flags::none );
             auto no_rotten_filter = r->get_component_filter( recipe_filter_flags::no_rotten );
             auto no_favorite_filter = r->get_component_filter( recipe_filter_flags::no_favorite );
             const deduped_requirement_data &req = r->deduped_requirements();
+            knows_recipe = known_recipes == nullptr || known_recipes->contains( r );
             has_all_skills = r->skill_used.is_null() ||
                 crafter.get_skill_level( r->skill_used ) >= r->get_difficulty(crafter);
             has_proficiencies = r->character_has_required_proficiencies(crafter);
             if( r->is_nested() ) {
-                can_craft = check_can_craft_nested(_crafter, *r );
+                can_craft = check_can_craft_nested( _crafter, *r, known_recipes );
             } else {
-                can_craft = ( !r->is_practice() || has_all_skills ) && has_proficiencies &&
-                            req.can_make_with_inventory( inv, all_items_filter, batch_size, craft_flags::start_only );
+                can_craft = knows_recipe && ( !r->is_practice() || has_all_skills ) &&
+                            has_proficiencies && req.can_make_with_inventory(
+                                inv, all_items_filter, batch_size, craft_flags::start_only );
             }
             std::string reason;
             if (crafter.is_npc() && !r->npc_can_craft(reason)) {
@@ -194,8 +201,9 @@ struct availability {
             would_not_benefit = r->is_practice() && cannot_gain_skill_or_prof(crafter, *r );
             is_nested_category = r->is_nested();
             const requirement_data &simple_req = r->simple_requirements();
-            apparently_craftable = ( !r->is_practice() || has_all_skills ) && has_proficiencies &&
-                                   simple_req.can_make_with_inventory( inv, all_items_filter, batch_size, craft_flags::start_only );
+            apparently_craftable = knows_recipe && ( !r->is_practice() || has_all_skills ) &&
+                                   has_proficiencies && simple_req.can_make_with_inventory(
+                                       inv, all_items_filter, batch_size, craft_flags::start_only );
             for( const std::pair<const skill_id, int> &e : r->required_skills ) {
                 if(crafter.get_skill_level( e.first ) < e.second ) {
                     has_all_skills = false;
@@ -212,6 +220,7 @@ struct availability {
         bool has_proficiencies;
         bool has_all_skills;
         bool is_nested_category;
+        bool knows_recipe;
     private:
         const recipe *rec;
         mutable float proficiency_time_maluses = -1.0f;
@@ -266,11 +275,12 @@ struct availability {
             }
         }
 
-        static bool check_can_craft_nested(Character& _crafter, const recipe &r ) {
+        static bool check_can_craft_nested( Character &_crafter, const recipe &r,
+                                            const recipe_subset *known_recipes ) {
             // recursively check if you can craft anything in the nest
             bool can_craft = false;
             for( const recipe_id &nested_r : r.nested_category_data ) {
-                if (availability(_crafter, &nested_r.obj()).can_craft) {
+                if( availability( _crafter, &nested_r.obj(), 1, known_recipes ).can_craft ) {
                     return true;
                 }
             }
@@ -352,6 +362,9 @@ static std::vector<std::string> recipe_info(
     }
 
     const bool can_craft_this = avail.can_craft;
+    if( !can_craft_this && !avail.knows_recipe && !recp.is_nested() ) {
+        oss << _( "<color_red>当前制作者不知道这个配方。</color>\n" );
+    }
     if( can_craft_this && avail.would_use_rotten ) {
         oss << _( "<color_red>Will use rotten ingredients</color>\n" );
     }
@@ -502,6 +515,7 @@ static input_context make_crafting_context( bool highlight_unread_recipes )
     ctxt.register_action( "HELP_RECIPE" );
     ctxt.register_action( "HELP_KEYBINDINGS" );
     ctxt.register_action( "CYCLE_BATCH" );
+    ctxt.register_action( "CHOOSE_CRAFTER" );
     ctxt.register_action( "RELATED_RECIPES" );
     ctxt.register_action( "HIDE_SHOW_RECIPE" );
     ctxt.register_action( "SELECT" );
@@ -517,7 +531,7 @@ static input_context make_crafting_context( bool highlight_unread_recipes )
 
 class recipe_result_info_cache
 {       
-        Character& crafter;
+        Character *crafter;
         std::vector<iteminfo> info;
         const recipe *last_recipe = nullptr;
         int last_terminal_width = 0;
@@ -533,7 +547,13 @@ class recipe_result_info_cache
         void insert_iteminfo_block_separator( std::vector<iteminfo> &info_vec,
                                               const std::string &title ) const;
     public:
-        explicit recipe_result_info_cache(Character& _crafter) : crafter(_crafter) {};
+        explicit recipe_result_info_cache( Character &_crafter ) : crafter( &_crafter ) {}
+        void set_crafter( Character &new_crafter ) {
+            if( crafter != &new_crafter ) {
+                crafter = &new_crafter;
+                last_recipe = nullptr;
+            }
+        }
         item_info_data get_result_data( const recipe *rec, int batch_size, int &scroll_pos,
                                         const catacurses::window &window );
 };
@@ -641,7 +661,7 @@ item_info_data recipe_result_info_cache::get_result_data( const recipe *rec, con
     //Check if recipe result is a clothing item that can be properly fitted
     if( dummy_result.has_flag( flag_VARSIZE ) && !dummy_result.has_flag( flag_FIT ) ) {
         //Check if it can actually fit.  If so, list the fitted info
-        item::sizing general_fit = dummy_result.get_sizing(crafter);
+        item::sizing general_fit = dummy_result.get_sizing( *crafter );
         if( general_fit == item::sizing::small_sized_small_char ||
             general_fit == item::sizing::human_sized_human_char ||
             general_fit == item::sizing::big_sized_big_char ||
@@ -900,8 +920,9 @@ static bool mouse_in_window( std::optional<point> coord, const catacurses::windo
 
 static void recursively_expance_recipes( std::vector<const recipe *> &current,
         std::vector<int> &indent, std::map<const recipe *, availability> &availability_cache, int i,
-        Character &crafter, bool unread_recipes_first, bool highlight_unread_recipes,
-        const recipe_subset &available_recipes, const std::set<recipe_id> &hidden_recipes )
+        Character &crafter, const recipe_subset *known_recipes, bool unread_recipes_first,
+        bool highlight_unread_recipes, const recipe_subset &available_recipes,
+        const std::set<recipe_id> &hidden_recipes )
 {
     std::vector<const recipe *> tmp;
     for( const recipe_id &nested : current[i]->nested_category_data ) {
@@ -912,7 +933,8 @@ static void recursively_expance_recipes( std::vector<const recipe *> &current,
             tmp.push_back( &nested.obj() );
             indent.insert( indent.begin() + i + 1, indent[i] + 2 );
             if( !availability_cache.count( &nested.obj() ) ) {
-                availability_cache.emplace(&nested.obj(), availability(crafter, &nested.obj()));
+                availability_cache.emplace(
+                    &nested.obj(), availability( crafter, &nested.obj(), 1, known_recipes ) );
             }
         }
     }
@@ -951,7 +973,8 @@ static void recursively_expance_recipes( std::vector<const recipe *> &current,
 // take the current and itterate through expanding each recipe
 static void expand_recipes( std::vector<const recipe *> &current,
                             std::vector<int> &indent, std::map<const recipe *, availability> &availability_cache,
-                            Character &crafter, bool unread_recipes_first, bool highlight_unread_recipes,
+                            Character &crafter, const recipe_subset *known_recipes,
+                            bool unread_recipes_first, bool highlight_unread_recipes,
                             const recipe_subset &available_recipes, const std::set<recipe_id> &hidden_recipes )
 {
     //TODO Make this more effecient
@@ -960,23 +983,26 @@ static void expand_recipes( std::vector<const recipe *> &current,
             uistate.expanded_recipes.find( current[i]->ident() ) != uistate.expanded_recipes.end() ) {
             // add all the recipes from the nests
             recursively_expance_recipes( current, indent, availability_cache, i, crafter,
-                                         unread_recipes_first, highlight_unread_recipes, available_recipes, hidden_recipes );
+                                         known_recipes, unread_recipes_first,
+                                         highlight_unread_recipes, available_recipes,
+                                         hidden_recipes );
         }
     }
 }
 
-static std::string list_nested(Character& crafter, const recipe* rec,
-    const recipe_subset& available_recipes,
-    int indent = 0)
-{   
+static std::string list_nested( Character &crafter, const recipe *rec,
+                                const recipe_subset &available_recipes,
+                                const recipe_subset *known_recipes, int indent = 0 )
+{
     std::string description;
-    availability avail(crafter, rec);
+    availability avail( crafter, rec, 1, known_recipes );
     if (rec->is_nested()) {
         description += colorize(std::string(indent,
             ' ') + rec->result_name() + ":\n", avail.color());
         for (const recipe_id& r : rec->nested_category_data) {
             
-            description += list_nested(crafter, &r.obj(), available_recipes, indent + 2);
+            description += list_nested( crafter, &r.obj(), available_recipes, known_recipes,
+                                        indent + 2 );
         }
     }
     else if (available_recipes.contains(rec)) {
@@ -1017,15 +1043,16 @@ static bool selection_ok( const std::vector<const recipe *> &list, const int cur
     return false;
 }
 
-const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_recipe,
-    Character& crafter)
+std::pair<Character *, const recipe *> select_crafter_and_crafting_recipe(
+    int &batch_size_out, const recipe_id &goto_recipe, Character &initial_crafter )
 {
-    recipe_result_info_cache result_info (crafter);
+    Character *crafter = &initial_crafter;
+    recipe_result_info_cache result_info( *crafter );
     recipe_info_cache r_info_cache;
     int recipe_info_scroll = 0;
     int item_info_scroll = 0;
     int item_info_scroll_popup = 0;
-    const int headHeight = 3;
+    const int headHeight = 4;
     const int subHeadHeight = 2;
 
     bool isWide = false;
@@ -1086,6 +1113,7 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
         add_action_desc( "RELATED_RECIPES", pgettext( "crafting gui", "Related" ) );
         add_action_desc( "TOGGLE_FAVORITE", pgettext( "crafting gui", "Favorite" ) );
         add_action_desc( "CYCLE_BATCH", pgettext( "crafting gui", "Batch" ) );
+        add_action_desc( "CHOOSE_CRAFTER", _( "选择制作者" ) );
         add_action_desc( "HELP_KEYBINDINGS", pgettext( "crafting gui", "Keybindings" ) );
         keybinding_x = isWide ? 5 : 2;
         keybinding_tips = foldstring( enumerate_as_string( act_descs, enumeration_conjunction::none ),
@@ -1099,7 +1127,7 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
         w_head_tabs = catacurses::newwin( headHeight, ( width - header_info_width ), point( wStart, 0 ) );
         w_head_info = catacurses::newwin( headHeight, header_info_width,
                                           point( wStart + ( width - header_info_width ), 0 ) );
-        w_subhead = catacurses::newwin( subHeadHeight, width, point( wStart, 3 ) );
+        w_subhead = catacurses::newwin( subHeadHeight, width, point( wStart, headHeight ) );
         w_data = catacurses::newwin( dataHeight, width, point( wStart,
                                      headHeight + subHeadHeight ) );
 
@@ -1147,12 +1175,20 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
     int last_line = -1;
     bool just_toggled_unread = false;
 
-    const inventory& crafting_inv = crafter.crafting_inventory();
-    const std::vector<npc*> helpers = crafter.get_crafting_helpers();
+    const std::vector<Character *> crafting_group = initial_crafter.get_crafting_group();
+    int crafter_i = std::find( crafting_group.begin(), crafting_group.end(), crafter ) -
+                    crafting_group.begin();
     std::string filterstring;
 
-    const recipe_subset &available_recipes = crafter.get_available_recipes( crafting_inv,
-            &helpers );
+    recipe_subset available_recipes;
+    std::map<Character *, recipe_subset> recipes_by_crafter;
+    for( Character *group_member : crafting_group ) {
+        recipe_subset member_recipes = group_member->get_available_recipes(
+                                           group_member->crafting_inventory() );
+        available_recipes.include( member_recipes );
+        recipes_by_crafter.emplace( group_member, std::move( member_recipes ) );
+    }
+    const recipe_subset *known_recipes = &recipes_by_crafter.at( crafter );
     std::map<const recipe *, availability> availability_cache;
 
     const std::string new_recipe_str = pgettext( "crafting gui", "NEW!" );
@@ -1238,6 +1274,11 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
         if( !show_hidden ) {
             draw_hidden_amount( w_head_info, num_hidden, num_recipe );
         }
+        const std::string crafter_label = string_format( _( "当前制作者：%s" ),
+                                          crafter->name_and_maybe_activity() );
+        mvwprintz( w_head_info, point( 1, 2 ), c_light_cyan, "%s",
+                   trim_by_length( crafter_label, std::max( 0, getmaxx( w_head_info ) - 2 ) ) );
+        wnoutrefresh( w_head_info );
 
         // Clear the screen of recipe data, and draw it anew
         werase( w_data );
@@ -1313,7 +1354,7 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
         if( !current.empty() ) {
             const recipe &recp = *current[line];
 
-            draw_can_craft_indicator( w_head_info, recp ,crafter);
+            draw_can_craft_indicator( w_head_info, recp, *crafter );
 
             const availability &avail = available[line];
             // border + padding + name + padding
@@ -1332,8 +1373,9 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
                 qry_comps = qry.substr( 2 );
             }
 
-            const std::vector<std::string> &info = cached_recipe_info( r_info_cache,
-                                                   recp, avail, crafter, qry_comps, batch_size, fold_width, color );
+                const std::vector<std::string> &info = cached_recipe_info(
+                            r_info_cache, recp, avail, *crafter, qry_comps, batch_size, fold_width,
+                            color );
 
             const int total_lines = info.size();
             if( recipe_info_scroll < 0 ) {
@@ -1369,14 +1411,14 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
             const recipe *cur_recipe = current[line];
             werase( w_iteminfo );
             if( cur_recipe->is_practice() ) {
-                const std::string desc = practice_recipe_description( *cur_recipe, crafter );
+                const std::string desc = practice_recipe_description( *cur_recipe, *crafter );
                 fold_and_print( w_iteminfo, point_zero, item_info_width, c_light_gray, desc );
                 scrollbar().offset_x( item_info_width - 1 ).offset_y( 0 ).content_size( 1 ).viewport_size( getmaxy(
                             w_iteminfo ) ).apply( w_iteminfo );
                 wnoutrefresh( w_iteminfo );
             } else if( cur_recipe->is_nested() ) {
                 std::string desc = cur_recipe->description.translated() + "\n\n";;
-                desc += list_nested(crafter, cur_recipe, available_recipes);
+                desc += list_nested( *crafter, cur_recipe, available_recipes, known_recipes );
                 fold_and_print( w_iteminfo, point_zero, item_info_width, c_light_gray, desc );
                 scrollbar().offset_x( item_info_width - 1 ).offset_y( 0 ).content_size( 1 ).viewport_size( getmaxy(
                             w_iteminfo ) ).apply( w_iteminfo );
@@ -1411,7 +1453,7 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
                 current.clear();
                 for( int i = 1; i <= 50; i++ ) {
                     current.push_back( chosen );
-                    available.emplace_back(crafter, chosen, i);
+                    available.emplace_back( *crafter, chosen, i, known_recipes );
                 }
                 indent.assign( current.size(), 0 );
             } else {
@@ -1437,7 +1479,7 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
                 if( !filterstring.empty() ) {
                     std::string qry = trim(filterstring);
                     recipe_subset filtered_recipes =
-                        filter_recipes( available_recipes, qry, crafter, progress_callback );
+                        filter_recipes( available_recipes, qry, *crafter, progress_callback );
                     picking.insert( picking.end(), filtered_recipes.begin(), filtered_recipes.end() );
                 } else {
                     const std::pair<std::vector<const recipe *>, bool> result = recipes_from_cat( available_recipes,
@@ -1465,13 +1507,14 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
                 // cache recipe availability on first display
                 for( const recipe *e : current ) {
                     if( !availability_cache.count( e ) ) {
-                        availability_cache.emplace(e, availability(crafter, e));
+                        availability_cache.emplace(
+                            e, availability( *crafter, e, 1, known_recipes ) );
                     }
                 }
 
                 if( subtab.cur() != "CSC_*_RECENT" ) {
                     std::stable_sort( current.begin(), current.end(), [
-                       &crafter, &availability_cache, unread_recipes_first,
+                       crafter, &availability_cache, unread_recipes_first,
                        highlight_unread_recipes
                     ]( const recipe * const a, const recipe * const b ) {
                         if( highlight_unread_recipes && unread_recipes_first ) {
@@ -1494,16 +1537,17 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
                         if( a_name != b_name ) {
                             return localized_compare( a_name, b_name );
                         }
-                        return b->time_to_craft( crafter ) <
-                               a->time_to_craft( crafter );
+                        return b->time_to_craft( *crafter ) <
+                               a->time_to_craft( *crafter );
                     } );
                 }
 
                 // set up indents and append the expanded entries
                 // have to do this after we sort the list
                 indent.assign( current.size(), 0 );
-                expand_recipes( current, indent, availability_cache, crafter, unread_recipes_first,
-                                highlight_unread_recipes, available_recipes, uistate.hidden_recipes );
+                expand_recipes( current, indent, availability_cache, *crafter, known_recipes,
+                                unread_recipes_first, highlight_unread_recipes, available_recipes,
+                                uistate.hidden_recipes );
 
                 std::transform( current.begin(), current.end(),
                 std::back_inserter( available ), [&]( const recipe * e ) {
@@ -1689,7 +1733,7 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
                 .query();
             } else if( current[line]->is_nested() ) {
                 nested_toggle( current[line]->ident(), recalc, keepline );
-            } else if( !crafter.check_eligible_containers_for_crafting( *current[line],
+            } else if( !crafter->check_eligible_containers_for_crafting( *current[line],
                        batch ? line + 1 : 1 ) ) {
                 // popup is already inside check
             } else {
@@ -1783,6 +1827,27 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
                 keepline = true;
             }
             recalc = true;
+        } else if( action == "CHOOSE_CRAFTER" ) {
+            const recipe *selected_recipe =
+                line >= 0 && static_cast<size_t>( line ) < current.size() ? current[line] : nullptr;
+            const int new_crafter = choose_crafter( crafting_group, recipes_by_crafter, crafter_i,
+                                    selected_recipe );
+            if( new_crafter >= 0 && new_crafter != crafter_i ) {
+                crafter_i = new_crafter;
+                crafter = crafting_group[crafter_i];
+                known_recipes = &recipes_by_crafter.at( crafter );
+                result_info.set_crafter( *crafter );
+                r_info_cache.recp = nullptr;
+                availability_cache.clear();
+                if( batch ) {
+                    batch = false;
+                    line = batch_line;
+                }
+                recalc = true;
+                keepline = true;
+                recipe_info_scroll = 0;
+                item_info_scroll = 0;
+            }
         } else if( action == "TOGGLE_FAVORITE" && selection_ok( current, line, true ) ) {
             keepline = true;
             recalc = filterstring.empty() && subtab.cur() == "CSC_*_FAVORITE";
@@ -1868,7 +1933,8 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
             recalc_unread = highlight_unread_recipes;
             ui.invalidate_ui();
 
-            std::string recipe_name = peek_related_recipe(current[line], available_recipes, crafter);
+            std::string recipe_name = peek_related_recipe( current[line], available_recipes,
+                                      *crafter );
             if( !recipe_name.empty() ) {
                 filterstring = recipe_name;
                 recalc = true;
@@ -1885,7 +1951,88 @@ const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_
         }
     } while( !done );
 
-    return chosen;
+    return { chosen ? crafter : nullptr, chosen };
+}
+
+static int choose_crafter( const std::vector<Character *> &crafting_group,
+                           const std::map<Character *, recipe_subset> &recipes_by_crafter,
+                           int current_crafter, const recipe *rec )
+{
+    uilist menu;
+    menu.text = _( "选择当前制作者" );
+    menu.selected = current_crafter;
+
+    for( size_t i = 0; i < crafting_group.size(); ++i ) {
+        Character *candidate = crafting_group[i];
+        const npc *candidate_npc = candidate->as_npc();
+        const bool asleep = candidate->in_sleep_state();
+        const bool busy = candidate_npc != nullptr &&
+                          ( candidate_npc->has_activity() || !candidate->activity.is_null() );
+        const bool selectable = candidate->is_avatar() || ( !asleep && !busy );
+
+        std::vector<std::string> reasons;
+        if( asleep ) {
+            reasons.emplace_back( _( "正在睡觉" ) );
+        } else if( busy ) {
+            reasons.emplace_back( _( "正在忙碌" ) );
+        }
+
+        if( rec != nullptr && !rec->is_nested() ) {
+            const availability avail( *candidate, rec, 1, &recipes_by_crafter.at( candidate ) );
+            const inventory &inv = candidate->crafting_inventory();
+            const bool has_requirements = rec->deduped_requirements().can_make_with_inventory(
+                                              inv,
+                                              rec->get_component_filter(
+                                                  recipe_filter_flags::none ), 1,
+                                              craft_flags::start_only );
+            if( !avail.knows_recipe ) {
+                reasons.emplace_back( _( "不知道配方" ) );
+            }
+            if( !has_requirements ) {
+                reasons.emplace_back( _( "缺少工具或材料" ) );
+            }
+            if( !avail.has_all_skills ) {
+                reasons.emplace_back( _( "技能不足" ) );
+            }
+            if( !avail.has_proficiencies ) {
+                reasons.emplace_back( _( "缺少熟练度" ) );
+            }
+            if( candidate->lighting_craft_speed_multiplier( *rec ) <= 0.0f ) {
+                reasons.emplace_back( _( "光照不足" ) );
+            }
+            if( candidate->morale_crafting_speed_multiplier( *rec ) <= 0.0f ) {
+                reasons.emplace_back( _( "士气过低" ) );
+            }
+            std::string npc_reason;
+            if( candidate->is_npc() && !rec->npc_can_craft( npc_reason ) ) {
+                reasons.emplace_back( npc_reason );
+            }
+        }
+
+        std::vector<std::string> condition;
+        if( candidate->get_fatigue() >= fatigue_levels::TIRED ) {
+            condition.emplace_back( _( "疲倦" ) );
+        }
+        if( candidate->get_morale_level() < 0 ) {
+            condition.emplace_back( _( "士气低落" ) );
+        }
+        if( candidate->get_perceived_pain() > 0 ) {
+            condition.emplace_back( _( "疼痛" ) );
+        }
+
+        const std::string craft_status = reasons.empty() ? _( "可用" ) :
+                                         enumerate_as_string( reasons,
+                                                 enumeration_conjunction::none );
+        const std::string body_status = condition.empty() ? _( "状态良好" ) :
+                                        enumerate_as_string( condition,
+                                                enumeration_conjunction::none );
+        menu.addentry( static_cast<int>( i ), selectable, MENU_AUTOASSIGN,
+                       "%s，%s，%s", candidate->name_and_maybe_activity(), craft_status,
+                       body_status );
+    }
+
+    menu.query();
+    return menu.ret;
 }
 
 std::string peek_related_recipe(const recipe* current, const recipe_subset& available,

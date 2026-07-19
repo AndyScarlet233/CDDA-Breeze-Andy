@@ -361,15 +361,17 @@ bool Character::has_morale_to_craft() const
 void Character::craft( const std::optional<tripoint> &loc, const recipe_id &goto_recipe )
 {
     int batch_size = 0;
-    const recipe* rec = select_crafting_recipe(batch_size, goto_recipe, *this);
+    const auto selected = select_crafter_and_crafting_recipe( batch_size, goto_recipe, *this );
+    Character *crafter = selected.first;
+    const recipe *rec = selected.second;
     if( rec ) {
         std::string reason;
-        if (is_npc() && !rec->npc_can_craft(reason)) {
+        if( crafter->is_npc() && !rec->npc_can_craft( reason ) ) {
             add_msg(m_info, reason);
             return;
         }
-        if( crafting_allowed( *this, *rec ) ) {
-            make_craft( rec->ident(), batch_size, loc );
+        if( crafting_allowed( *crafter, *rec ) ) {
+            crafter->make_craft( rec->ident(), batch_size, loc );
         }
     }
 }
@@ -386,10 +388,12 @@ void Character::recraft( const std::optional<tripoint> &loc )
 void Character::long_craft( const std::optional<tripoint> &loc, const recipe_id &goto_recipe )
 {
     int batch_size = 0;
-    const recipe* rec = select_crafting_recipe(batch_size, goto_recipe, *this);
+    const auto selected = select_crafter_and_crafting_recipe( batch_size, goto_recipe, *this );
+    Character *crafter = selected.first;
+    const recipe *rec = selected.second;
     if( rec ) {
-        if( crafting_allowed( *this, *rec ) ) {
-            make_all_craft( rec->ident(), batch_size, loc );
+        if( crafting_allowed( *crafter, *rec ) ) {
+            crafter->make_all_craft( rec->ident(), batch_size, loc );
         }
     }
 }
@@ -2973,6 +2977,26 @@ std::vector<npc *> Character::get_crafting_helpers() const
                rl_dist( guy.pos(), pos() ) < PICKUP_RANGE &&
                get_map().clear_path( pos(), guy.pos(), PICKUP_RANGE, 1, 100 );
     } );
+}
+
+std::vector<Character *> Character::get_crafting_group() const
+{
+    std::vector<Character *> result;
+    result.push_back( const_cast<Character *>( this ) );
+
+    // NPC dialogue crafting deliberately remains a one-NPC command.  The
+    // group selector is intended for the normal menu opened by the avatar.
+    if( !is_avatar() ) {
+        return result;
+    }
+
+    std::vector<npc *> allies = g->get_npcs_if( [this]( const npc &guy ) {
+        return guy.is_ally( *this ) &&
+               rl_dist( guy.pos(), pos() ) < PICKUP_RANGE &&
+               get_map().clear_path( pos(), guy.pos(), PICKUP_RANGE, 1, 100 );
+    } );
+    result.insert( result.end(), allies.begin(), allies.end() );
+    return result;
 }
 
 static bool is_anyone_crafting(const item_location& itm, const Character* you = nullptr)
