@@ -3188,6 +3188,11 @@ class Character : public Creature, public visitable
         bool can_continue_craft( item &craft, const requirement_data &continue_reqs );
         /** Returns nearby NPCs ready and willing to help with crafting. */
         std::vector<npc *> get_crafting_helpers() const;
+        /**
+         * Returns this character and nearby allied NPCs whose recipe knowledge
+         * can be selected from the normal crafting menu.
+         */
+        std::vector<Character *> get_crafting_group() const;
         int get_num_crafting_helpers( int max ) const;
         /**
          * Handle skill gain for player and followers during crafting.

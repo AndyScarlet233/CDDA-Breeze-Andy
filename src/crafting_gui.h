@@ -4,6 +4,7 @@
 
 #include <iosfwd>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "type_id.h"
@@ -12,8 +13,12 @@ class Character;
 class JsonObject;
 class recipe;
 
-const recipe* select_crafting_recipe(int& batch_size_out, const recipe_id& goto_recipe,
-    Character& crafter);
+/**
+ * Open the crafting menu and choose both the recipe and the nearby allied
+ * character who will perform it.
+ */
+std::pair<Character *, const recipe *> select_crafter_and_crafting_recipe(
+    int &batch_size_out, const recipe_id &goto_recipe, Character &initial_crafter );
 
 void load_recipe_category( const JsonObject &jsobj );
 void reset_recipe_categories();
