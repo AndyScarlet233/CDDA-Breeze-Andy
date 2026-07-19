@@ -1515,7 +1515,7 @@ static activity_reason_info can_do_activity_there( const activity_id &act, Chara
         if( p ) {
             item_location to_craft = item_to_craft_at( *p, src_loc );
             if( to_craft && to_craft->is_craft() ) {
-                const inventory& inv = you.crafting_inventory(src_loc.raw(), PICKUP_RANGE - 1, false);
+                const inventory &inv = you.crafting_inventory( src_loc.raw(), PICKUP_RANGE, false );
                 const recipe& r = to_craft->get_making();
                 std::vector<std::vector<item_comp>> item_comp_vector =
                     to_craft->get_continue_reqs().get_components();
@@ -2990,7 +2990,8 @@ static requirement_check_result generic_multi_activity_check_requirement(
             loot_zone_spots.emplace_back( elem );
             combined_spots.emplace_back( elem );
         }
-        for( const tripoint_bub_ms &elem : here.points_in_radius( src_loc, PICKUP_RANGE - 1 ) ) {
+        const int nearby_radius = act_id == ACT_MULTIPLE_CRAFT ? PICKUP_RANGE : PICKUP_RANGE - 1;
+        for( const tripoint_bub_ms &elem : here.points_in_radius( src_loc, nearby_radius ) ) {
             combined_spots.push_back( elem );
         }
         add_basecamp_storage_to_loot_zone_list( mgr, src_loc, you, loot_zone_spots, combined_spots );
@@ -3084,9 +3085,17 @@ static requirement_check_result generic_multi_activity_check_requirement(
         // is it even worth fetching anything if there isn't enough nearby?
         if( !are_requirements_nearby( tool_pickup ? loot_zone_spots : combined_spots, what_we_need, you,
                                       act_id, tool_pickup, src_loc ) ) {
-            you.add_msg_player_or_npc( m_info,
-                                       _( "The required items are not available to complete this task." ),
-                                       _( "The required items are not available to complete this task." ) );
+            if( act_id == ACT_MULTIPLE_CRAFT ) {
+                you.add_msg_player_or_npc( m_bad,
+                                           _( "工作地点附近缺少继续制造所需的物品或工具，制作已停止。" ),
+                                           _( "工作地点附近缺少继续制造所需的物品或工具，<npcname>停止了制作。" ) );
+            } else {
+                you.add_msg_player_or_npc( m_info,
+                                           _( "The required items are not available to "
+                                              "complete this task." ),
+                                           _( "The required items are not available to "
+                                              "complete this task." ) );
+            }
 
             add_msg(m_bad,what_we_need.obj().list_missing());
 
@@ -3110,7 +3119,8 @@ static requirement_check_result generic_multi_activity_check_requirement(
                         local_src_set.push_back( here.bub_from_abs( elem ) );
                     }
                     std::vector<tripoint_bub_ms> candidates;
-                    for( const tripoint_bub_ms &point_elem : here.points_in_radius( src_loc, PICKUP_RANGE - 1 ) ) {
+                    for( const tripoint_bub_ms &point_elem : here.points_in_radius( src_loc,
+                            nearby_radius ) ) {
                         // we don't want to place the components where they could interfere with our ( or someone else's ) construction spots
                         if( !you.sees( point_elem ) || ( std::find( local_src_set.begin(), local_src_set.end(),
                                                          point_elem ) != local_src_set.end() ) || !here.can_put_items_ter_furn( point_elem ) ) {
@@ -3119,6 +3129,11 @@ static requirement_check_result generic_multi_activity_check_requirement(
                         candidates.push_back( point_elem );
                     }
                     if( candidates.empty() ) {
+                        if( act_id == ACT_MULTIPLE_CRAFT ) {
+                            you.add_msg_player_or_npc( m_bad,
+                                                       _( "工作地点附近没有可供放置材料的位置，制作已停止。" ),
+                                                       _( "工作地点附近没有可供放置材料的位置，<npcname>停止了制作。" ) );
+                        }
                         you.activity = player_activity();
                         you.backlog.clear();
                         check_npc_revert( you );
