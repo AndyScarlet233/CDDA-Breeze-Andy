@@ -138,6 +138,48 @@ static const zone_type_id zone_type_LOOT_WOOD( "LOOT_WOOD" );
 static const zone_type_id zone_type_MINING( "MINING" );
 static const zone_type_id zone_type_MOPPING( "MOPPING" );
 static const zone_type_id zone_type_SOURCE_FIREWOOD( "SOURCE_FIREWOOD" );
+
+static bool craft_is_assigned_to( const item &craft, const npc &who )
+{
+    if( !craft.is_craft() ) {
+        return false;
+    }
+    const std::string crafter_id = craft.get_var( "crafter_id", "" );
+    return ( !crafter_id.empty() && crafter_id == std::to_string( who.getID().get_value() ) ) ||
+           craft.get_var( "crafter", "" ) == who.name;
+}
+
+static item_location item_to_craft_at( npc &who, const tripoint_bub_ms &where )
+{
+    map &here = get_map();
+
+    // NPCs use a wielded in-progress craft when automatic selection falls
+    // back to hand crafting instead of choosing a map or vehicle workbench.
+    if( where == who.pos_bub() ) {
+        item_location wielded = who.get_wielded_item();
+        if( wielded && craft_is_assigned_to( *wielded, who ) ) {
+            return wielded;
+        }
+    }
+
+    for( item &candidate : here.i_at( where ) ) {
+        if( craft_is_assigned_to( candidate, who ) ) {
+            return item_location( map_cursor( where.raw() ), &candidate );
+        }
+    }
+
+    if( const optional_vpart_position vp = here.veh_at( where ) ) {
+        const int cargo_part = vp->vehicle().part_with_feature( vp->part_index(), "CARGO", false );
+        if( cargo_part >= 0 ) {
+            for( item &candidate : vp->vehicle().get_items( cargo_part ) ) {
+                if( craft_is_assigned_to( candidate, who ) ) {
+                    return item_location( vehicle_cursor( vp->vehicle(), cargo_part ), &candidate );
+                }
+            }
+        }
+    }
+    return item_location();
+}
 static const zone_type_id zone_type_VEHICLE_DECONSTRUCT( "VEHICLE_DECONSTRUCT" );
 static const zone_type_id zone_type_VEHICLE_REPAIR( "VEHICLE_REPAIR" );
 static const zone_type_id zone_type_zone_disassemble( "zone_disassemble" );
@@ -1467,12 +1509,12 @@ static activity_reason_info can_do_activity_there( const activity_id &act, Chara
         // 2. when we form the src_set to loop through at the beginning of the fetch activity.
         return activity_reason_info::ok( do_activity_reason::CAN_DO_FETCH );
     }
-    else if (act == ACT_MULTIPLE_CRAFT) {
-        // only npc is supported
-        npc* p = you.as_npc();
-        if (p) {
-            item_location to_craft = p->get_item_to_craft();
-            if (to_craft && to_craft->is_craft()) {
+    else if( act == ACT_MULTIPLE_CRAFT ) {
+        // Only NPCs are supported.  The placement points at the selected workplace.
+        npc *p = you.as_npc();
+        if( p ) {
+            item_location to_craft = item_to_craft_at( *p, src_loc );
+            if( to_craft && to_craft->is_craft() ) {
                 const inventory& inv = you.crafting_inventory(src_loc.raw(), PICKUP_RANGE - 1, false);
                 const recipe& r = to_craft->get_making();
                 std::vector<std::vector<item_comp>> item_comp_vector =
@@ -2681,7 +2723,7 @@ static zone_type_id get_zone_for_act( const tripoint_bub_ms &src_loc, const zone
 /** Determine all locations for this generic activity */
 /** Returns locations */
 static std::unordered_set<tripoint_abs_ms> generic_multi_activity_locations(
-    Character &you, const activity_id &act_id )
+    Character &you, const activity_id &act_id, const tripoint_abs_ms &activity_placement )
 {
     bool dark_capable = false;
     std::unordered_set<tripoint_abs_ms> src_set;
@@ -2744,9 +2786,11 @@ static std::unordered_set<tripoint_abs_ms> generic_multi_activity_locations(
         }
     }
     else if (act_id == ACT_MULTIPLE_CRAFT) {
-        // Craft only with what is on the spot
-        // TODO: add zone type like zone_type_CRAFT?
-        src_set.insert(here.getglobal(localpos));
+        if( activity_placement != player_activity::invalid_place ) {
+            src_set.insert( activity_placement );
+        } else {
+            src_set.insert( here.getglobal( localpos ) );
+        }
 
     } else if( act_id != ACT_FETCH_REQUIRED ) {
         zone_type_id zone_type = get_zone_for_act( tripoint_bub_ms{}, mgr, act_id, _fac_id( you ) );
@@ -2835,7 +2879,21 @@ static std::unordered_set<tripoint_abs_ms> generic_multi_activity_locations(
     }
     const bool post_dark_check = src_set.empty();
     if( !pre_dark_check && post_dark_check && !MOP_ACTIVITY ) {
-        you.add_msg_if_player( m_info, _( "It is too dark to do this activity." ) );
+        if( act_id == ACT_MULTIPLE_CRAFT &&
+            activity_placement != player_activity::invalid_place ) {
+            const tripoint_bub_ms workplace = here.bub_from_abs( activity_placement );
+            if( here.dangerous_field_at( workplace ) ) {
+                you.add_msg_player_or_npc( m_bad,
+                                           _( "指定工作地点出现了危险，制作已停止。" ),
+                                           _( "指定工作地点出现了危险，<npcname>停止了制作。" ) );
+            } else {
+                you.add_msg_player_or_npc( m_bad,
+                                           _( "指定工作地点光照不足，无法继续制作。" ),
+                                           _( "指定工作地点光照不足，<npcname>无法继续制作。" ) );
+            }
+        } else {
+            you.add_msg_if_player( m_info, _( "It is too dark to do this activity." ) );
+        }
     }
     return src_set;
 }
@@ -3201,19 +3259,29 @@ static bool generic_multi_activity_do(
 
         you.activity_vehicle_part_index = -1;
     }
-    else if (reason == do_activity_reason::NEEDS_CRAFT) {
-        // only npc is supported
-        npc* p = you.as_npc();
-        if (p) {
-            item_location to_craft = p->get_item_to_craft();
-            if (to_craft && to_craft->is_craft() &&
-                you.lighting_craft_speed_multiplier(to_craft->get_making()) > 0) {
-                player_activity act = player_activity(craft_activity_actor(to_craft, false));
-                you.assign_activity(act);
-                you.backlog.emplace_front(ACT_MULTIPLE_CRAFT);
-                you.backlog.front().auto_resume = true;
-                return false;
+    else if( reason == do_activity_reason::NEEDS_CRAFT ) {
+        // Only NPCs are supported.
+        npc *p = you.as_npc();
+        if( p ) {
+            item_location to_craft = item_to_craft_at( *p, src_loc );
+            if( !to_craft || !to_craft->is_craft() ) {
+                you.add_msg_player_or_npc( m_bad,
+                                           _( "你找不到指定的制造中物品。" ),
+                                           _( "<npcname>找不到指定的制造中物品。" ) );
+                return true;
             }
+            if( you.lighting_craft_speed_multiplier( to_craft->get_making() ) <= 0 ) {
+                you.add_msg_player_or_npc( m_bad,
+                                           _( "这里太暗，无法继续制作。" ),
+                                           _( "这里太暗，<npcname>无法继续制作。" ) );
+                return true;
+            }
+            player_activity craft_act = player_activity( craft_activity_actor( to_craft, false ) );
+            you.assign_activity( craft_act );
+            you.backlog.emplace_front( ACT_MULTIPLE_CRAFT );
+            you.backlog.front().placement = here.getglobal( src_loc );
+            you.backlog.front().auto_resume = true;
+            return false;
         }
     } else if( reason == do_activity_reason::NEEDS_DISASSEMBLE ) {
         
@@ -3287,6 +3355,12 @@ bool generic_multi_activity_handler( player_activity &act, Character &you, bool 
     const tripoint_abs_ms abspos = here.getglobal( you.pos() );
     // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
     activity_id activity_to_restore = act.id();
+    const tripoint_abs_ms activity_placement = act.placement;
+    const auto restored_activity = [&]() {
+        player_activity restored( activity_to_restore );
+        restored.placement = activity_placement;
+        return restored;
+    };
     // Nuke the current activity, leaving the backlog alone
     if( !check_only ) {
         you.activity = player_activity();
@@ -3294,7 +3368,7 @@ bool generic_multi_activity_handler( player_activity &act, Character &you, bool 
     // now we setup the target spots based on which activity is occurring
     // the set of target work spots - potentially after we have fetched required tools.
     std::unordered_set<tripoint_abs_ms> src_set =
-        generic_multi_activity_locations( you, activity_to_restore );
+        generic_multi_activity_locations( you, activity_to_restore, activity_placement );
     // now we have our final set of points
     std::vector<tripoint_abs_ms> src_sorted = get_sorted_tiles_by_distance( abspos, src_set );
     // now loop through the work-spot tiles and judge whether its worth traveling to it yet
@@ -3312,18 +3386,23 @@ bool generic_multi_activity_handler( player_activity &act, Character &you, bool 
             if( !here.inbounds( you.pos() ) ) {
                 // p is implicitly an NPC that has been moved off the map, so reset the activity
                 // and unload them
-                you.assign_activity( activity_to_restore );
+                you.assign_activity( restored_activity() );
                 you.set_moves( 0 );
                 g->reload_npcs();
                 return false;
             }
             const std::vector<tripoint_bub_ms> route = route_adjacent( you, src_loc );
             if( route.empty() ) {
-                // can't get there, can't do anything, skip it
+                // Can't get there, can't do anything, skip it.
+                if( activity_to_restore == ACT_MULTIPLE_CRAFT ) {
+                    you.add_msg_player_or_npc( m_bad,
+                                               _( "你无法到达指定工作地点。" ),
+                                               _( "<npcname>无法到达指定工作地点。" ) );
+                }
                 continue;
             }
             you.set_moves( 0 );
-            you.set_destination( route, player_activity( activity_to_restore ) );
+            you.set_destination( route, restored_activity() );
             return false;
         }
         activity_reason_info act_info = can_do_activity_there( activity_to_restore, you,
@@ -3353,20 +3432,25 @@ bool generic_multi_activity_handler( player_activity &act, Character &you, bool 
             }
             // check if we found path to source / adjacent tile
             if( route.empty() ) {
+                if( activity_to_restore == ACT_MULTIPLE_CRAFT ) {
+                    you.add_msg_player_or_npc( m_bad,
+                                               _( "你无法到达指定工作地点。" ),
+                                               _( "<npcname>无法到达指定工作地点。" ) );
+                }
                 check_npc_revert( you );
                 continue;
             }
             if( !check_only ) {
                 if( you.moves <= 0 ) {
                     // Restart activity and break from cycle.
-                    you.assign_activity( activity_to_restore );
+                    you.assign_activity( restored_activity() );
                     return true;
                 }
                 // set the destination and restart activity after player arrives there
                 // we don't need to check for safe mode,
                 // activity will be restarted only if
                 // player arrives on destination tile
-                you.set_destination( route, player_activity( activity_to_restore ) );
+                you.set_destination( route, restored_activity() );
                 return true;
             }
         }
@@ -3381,7 +3465,13 @@ bool generic_multi_activity_handler( player_activity &act, Character &you, bool 
             activity_to_restore != ACT_MOVE_LOOT &&
             activity_to_restore != ACT_FETCH_REQUIRED &&
             you.fine_detail_vision_mod( you.pos() ) > 4.0 ) {
-            you.add_msg_if_player( m_info, _( "It is too dark to work here." ) );
+            if( activity_to_restore == ACT_MULTIPLE_CRAFT ) {
+                you.add_msg_player_or_npc( m_bad,
+                                           _( "这里太暗，无法继续制作。" ),
+                                           _( "这里太暗，<npcname>无法继续制作。" ) );
+            } else {
+                you.add_msg_if_player( m_info, _( "It is too dark to work here." ) );
+            }
             return false;
         }
         if( !check_only ) {
@@ -3398,7 +3488,7 @@ bool generic_multi_activity_handler( player_activity &act, Character &you, bool 
     if( !check_only ) {
         if( you.moves <= 0 ) {
             // Restart activity and break from cycle.
-            you.assign_activity( activity_to_restore );
+            you.assign_activity( restored_activity() );
             you.activity_vehicle_part_index = -1;
             return false;
         }

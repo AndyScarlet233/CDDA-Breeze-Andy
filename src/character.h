@@ -3253,7 +3253,8 @@ class Character : public Creature, public visitable
             return i;
         } );
         /** Consume tools for the next multiplier * 5% progress of the craft */
-        bool craft_consume_tools( item &craft, int multiplier, bool start_craft );
+        bool craft_consume_tools( item &craft, int multiplier, bool start_craft,
+                                  const std::optional<tripoint> &workplace = std::nullopt );
         void consume_tools( const comp_selection<tool_comp> &tool, int batch );
         void consume_tools( map &m, const comp_selection<tool_comp> &tool, int batch,
                             const tripoint &origin = tripoint_zero, int radius = PICKUP_RANGE,
