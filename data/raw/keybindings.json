@@ -744,15 +744,8 @@
     "type": "keybinding",
     "id": "CHOOSE_CRAFTER",
     "category": "CRAFTING",
-    "name": "选择制作者",
+    "name": "制造设置",
     "bindings": [ { "input_method": "keyboard_any", "key": "c" } ]
-  },
-  {
-    "type": "keybinding",
-    "id": "CHOOSE_CRAFTING_LOCATION",
-    "category": "CRAFTING",
-    "name": "选择工作地点",
-    "bindings": [ { "input_method": "keyboard_any", "key": "w" } ]
   },
   {
     "type": "keybinding",
