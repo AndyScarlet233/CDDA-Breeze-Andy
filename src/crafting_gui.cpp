@@ -61,6 +61,7 @@ static const std::string flag_BLIND_HARD( "BLIND_HARD" );
 
 static const limb_score_id limb_score_manip( "manip" );
 static const string_id<struct furn_t> furn_f_ground_crafting_spot( "f_ground_crafting_spot" );
+static const field_type_id fd_crafting_spot( "fd_crafting_spot" );
 
 class npc;
 
@@ -94,6 +95,12 @@ namespace
 class crafting_uimenu
 {
     public:
+        struct query_result {
+            int retval;
+            int selected;
+            std::string action;
+        };
+
         explicit crafting_uimenu( int columns ) : column_count( columns ) {
             cata_assert( columns >= 1 );
         }
@@ -116,10 +123,25 @@ class crafting_uimenu
             menu.title = title;
         }
 
-        int query() {
+        void set_preamble( const std::string &text ) {
+            preamble = text;
+        }
+
+        void set_footer( const std::string &text ) {
+            menu.footer_text = text;
+        }
+
+        query_result query( bool allow_page_switch = false ) {
             finalize();
+            if( allow_page_switch ) {
+                menu.additional_actions = {
+                    { "UILIST.LEFT", to_translation( "上一页" ) },
+                    { "UILIST.RIGHT", to_translation( "下一页" ) }
+                };
+                menu.allow_additional = true;
+            }
             menu.query();
-            return menu.ret;
+            return { menu.ret, menu.selected, menu.ret_act };
         }
 
     private:
@@ -166,13 +188,19 @@ class crafting_uimenu
                 widths[i] += spacing;
             }
 
+            std::string menu_text;
+            if( !preamble.empty() ) {
+                menu_text = "  " + preamble;
+            }
             if( header ) {
                 // uilist descriptions begin two cells left of entry text because entries reserve
                 // space for their numeric hotkey.  Prefixing two spaces keeps the columns aligned.
-                menu.settext( "  " + format_columns( *header, widths ) );
-            } else {
-                menu.settext( std::string() );
+                if( !menu_text.empty() ) {
+                    menu_text += "\n";
+                }
+                menu_text += "  " + format_columns( *header, widths );
             }
+            menu.settext( menu_text );
             for( const row &entry : rows ) {
                 menu.addentry( entry.retval, entry.enabled, -1,
                                format_columns( entry.columns, widths ) );
@@ -181,6 +209,7 @@ class crafting_uimenu
 
         int column_count;
         std::optional<std::vector<std::string>> header;
+        std::string preamble;
         std::vector<row> rows;
         uilist menu;
 };
@@ -191,6 +220,7 @@ struct crafting_workplace {
     std::string type;
     std::string detail;
     bool selectable = true;
+    bool marked = false;
 };
 
 struct crafting_menu_defaults {
@@ -240,6 +270,50 @@ static std::string workplace_distance_text( const Character &crafter, const trip
     return string_format( _( "%s %d 格" ),
                           trim( direction_name( direction_from( crafter.pos(), loc ) ) ),
                           distance );
+}
+
+static std::string workplace_name_at( const tripoint &location )
+{
+    map &here = get_map();
+    if( const std::optional<vpart_reference> vp = here.veh_at( location ).part_with_feature(
+                "WORKBENCH", true ) ) {
+        return vp->part().name();
+    }
+    if( here.furn( location ) == furn_f_ground_crafting_spot ) {
+        return _( "地面制造点" );
+    }
+    if( here.has_furn( location ) ) {
+        return here.furn( location ).obj().name();
+    }
+    return _( "指定地点" );
+}
+
+static bool is_marked_crafting_spot( const tripoint &location )
+{
+    map &here = get_map();
+    return here.furn( location ) == furn_f_ground_crafting_spot ||
+           here.get_field( location, fd_crafting_spot ) != nullptr;
+}
+
+static std::string workplace_description_at( const tripoint &location )
+{
+    map &here = get_map();
+    if( const std::optional<vpart_reference> vp = here.veh_at( location ).part_with_feature(
+                "WORKBENCH", true ) ) {
+        if( const std::optional<vpslot_workbench> &wb = vp->part().info().get_workbench_info() ) {
+            return string_format( _( "载具工作台，倍率 %.2f" ), wb->multiplier );
+        }
+        return _( "载具工作台" );
+    }
+    if( here.has_furn( location ) && here.furn( location ).obj().workbench ) {
+        const furn_t &furniture = here.furn( location ).obj();
+        const std::string type = here.furn( location ) == furn_f_ground_crafting_spot ?
+                                 _( "地面制造点" ) :
+                                 is_marked_crafting_spot( location ) ? _( "标记工作台" ) :
+                                 _( "家具工作台" );
+        return string_format( _( "%s，倍率 %.2f" ), type, furniture.workbench->multiplier );
+    }
+    return _( "指定地点" );
 }
 
 static bool has_adjacent_work_position( const tripoint &loc )
@@ -300,7 +374,7 @@ static std::vector<crafting_workplace> collect_crafting_workplaces(
     }
 
     for( const tripoint &pt : here.points_in_radius( viewer.pos(), ACTIVITY_SEARCH_DISTANCE ) ) {
-        if( here.furn( pt ) == furn_f_ground_crafting_spot ) {
+        if( is_marked_crafting_spot( pt ) ) {
             locations.insert( pt );
         }
     }
@@ -312,6 +386,7 @@ static std::vector<crafting_workplace> collect_crafting_workplaces(
     for( const tripoint &loc : locations ) {
         crafting_workplace entry;
         entry.location = loc;
+        entry.marked = is_marked_crafting_spot( loc );
         entry.selectable = !here.dangerous_field_at( loc ) && has_adjacent_work_position( loc );
         if( const std::optional<vpart_reference> vp = here.veh_at( loc ).part_with_feature(
                     "WORKBENCH", true ) ) {
@@ -323,31 +398,61 @@ static std::vector<crafting_workplace> collect_crafting_workplaces(
             }
         } else if( here.has_furn( loc ) ) {
             const furn_t &furniture = here.furn( loc ).obj();
-            entry.name = furniture.name();
-            entry.type = here.furn( loc ) == furn_f_ground_crafting_spot ? _( "标记制造点" ) :
-                         _( "家具工作台" );
+            entry.name = here.furn( loc ) == furn_f_ground_crafting_spot ? _( "地面制造点" ) :
+                         furniture.name();
+            entry.type = here.furn( loc ) == furn_f_ground_crafting_spot ? _( "地面制造点" ) :
+                         entry.marked ? _( "标记工作台" ) : _( "家具工作台" );
             if( furniture.workbench ) {
                 entry.detail = string_format( _( "倍率 %.2f" ), furniture.workbench->multiplier );
+            } else if( entry.marked ) {
+                entry.selectable = false;
+                entry.detail = _( "原家具已不再是工作台" );
             }
         } else {
             entry.name = _( "地面" );
-            entry.type = _( "指定地点" );
+            entry.type = entry.marked ? _( "失效制造点" ) : _( "指定地点" );
+            if( entry.marked ) {
+                entry.selectable = false;
+                entry.detail = _( "标记所在的工作台已不存在" );
+            }
         }
         result.push_back( std::move( entry ) );
     }
+
+    std::stable_sort( result.begin() + 1, result.end(), [&]( const crafting_workplace &lhs,
+    const crafting_workplace & rhs ) {
+        if( lhs.marked != rhs.marked ) {
+            return lhs.marked;
+        }
+        const int lhs_distance = lhs.location ? rl_dist( viewer.pos(), *lhs.location ) : 0;
+        const int rhs_distance = rhs.location ? rl_dist( viewer.pos(), *rhs.location ) : 0;
+        if( lhs_distance != rhs_distance ) {
+            return lhs_distance < rhs_distance;
+        }
+        return localized_compare( lhs.name, rhs.name );
+    } );
     return result;
 }
 
-static std::string workplace_status_text( const crafting_workplace &workplace,
+static std::string workplace_detail_text( const crafting_workplace &workplace,
         const Character &crafter )
 {
     std::vector<std::string> parts;
-    parts.emplace_back( workplace.type );
-    if( !workplace.detail.empty() ) {
-        parts.emplace_back( workplace.detail );
-    }
-    if( workplace.location ) {
-        parts.emplace_back( workplace_distance_text( crafter, *workplace.location ) );
+    if( !workplace.location ) {
+        const std::optional<tripoint> effective = resolve_crafting_workplace(
+                    crafter, std::nullopt );
+        if( effective ) {
+            parts.emplace_back( string_format( _( "自动采用：%s，%s" ),
+                                               workplace_name_at( *effective ),
+                                               workplace_description_at( *effective ) ) );
+        } else {
+            parts.emplace_back( _( "附近无工作台，将手持或在地面制造" ) );
+        }
+    } else {
+        parts.emplace_back( workplace.type );
+        if( !workplace.detail.empty() ) {
+            parts.emplace_back( workplace.detail );
+        }
     }
     if( !workplace.selectable ) {
         parts.emplace_back( _( "附近没有安全站位" ) );
@@ -355,14 +460,29 @@ static std::string workplace_status_text( const crafting_workplace &workplace,
     return enumerate_as_string( parts, enumeration_conjunction::none );
 }
 
-static std::string workplace_display_name( const std::vector<crafting_workplace> &workplaces,
-        const std::optional<tripoint> &location )
+static std::string workplace_relative_text( const crafting_workplace &workplace,
+        const Character &crafter )
 {
-    const auto found = std::find_if( workplaces.begin(), workplaces.end(),
-    [&location]( const crafting_workplace & entry ) {
-        return entry.location == location;
-    } );
-    return found != workplaces.end() ? found->name : _( "自动选择" );
+    if( workplace.location ) {
+        return workplace_distance_text( crafter, *workplace.location );
+    }
+    const std::optional<tripoint> effective = resolve_crafting_workplace( crafter, std::nullopt );
+    return effective ? workplace_distance_text( crafter, *effective ) : _( "脚下" );
+}
+
+static std::string selected_workplace_text( const Character &crafter,
+        const std::optional<tripoint> &selected_location,
+        const std::optional<tripoint> &effective_location )
+{
+    if( selected_location ) {
+        return string_format( _( "%s，%s" ), workplace_name_at( *selected_location ),
+                              workplace_distance_text( crafter, *selected_location ) );
+    }
+    if( effective_location ) {
+        return string_format( _( "自动选择（%s，%s）" ), workplace_name_at( *effective_location ),
+                              workplace_distance_text( crafter, *effective_location ) );
+    }
+    return _( "自动选择（手持或地面制造）" );
 }
 
 } // namespace
@@ -598,7 +718,8 @@ static std::vector<std::string> recipe_info(
     const recipe &recp,
     const availability &avail,
     Character &guy,
-    const std::optional<tripoint> &workplace,
+    const std::optional<tripoint> &selected_workplace,
+    const std::optional<tripoint> &effective_workplace,
     const std::string &qry_comps,
     const int batch_size,
     const int fold_width,
@@ -627,7 +748,7 @@ static std::vector<std::string> recipe_info(
 
     if( !recp.is_nested() ) {
         const int assistants = guy.available_assistant_count( recp );
-        const float speed = crafting_speed_at( guy, recp, workplace );
+        const float speed = crafting_speed_at( guy, recp, effective_workplace );
         if( speed > 0.0f ) {
             const int expected_turns = recp.batch_time( guy, batch_size, speed, assistants ) /
                                        to_moves<int>( 1_turns );
@@ -657,7 +778,7 @@ static std::vector<std::string> recipe_info(
                           recp.has_flag( flag_BLIND_HARD ) ? _( "Hard" ) :
                           _( "Impossible" ) );
 
-    const inventory &crafting_inv = crafting_inventory_at( guy, workplace );
+    const inventory &crafting_inv = crafting_inventory_at( guy, effective_workplace );
     if( recp.result() ) {
         const int nearby_amount = crafting_inv.count_item( recp.result() );
         std::string nearby_string;
@@ -671,6 +792,11 @@ static std::vector<std::string> recipe_info(
         }
         oss << string_format( _( "Nearby: %s\n" ), nearby_string );
     }
+
+    oss << string_format( _( "制作者：<color_cyan>%s</color>\n" ),
+                          guy.is_avatar() ? _( "你" ) : guy.get_name() );
+    oss << string_format( _( "工作地点：<color_cyan>%s</color>\n" ),
+                          selected_workplace_text( guy, selected_workplace, effective_workplace ) );
 
     const bool can_craft_this = avail.can_craft;
     if( !can_craft_this && !avail.knows_recipe && !recp.is_nested() ) {
@@ -1087,7 +1213,8 @@ struct recipe_info_cache {
 
 static const std::vector<std::string> &cached_recipe_info( recipe_info_cache &info_cache,
         const recipe &recp, const availability &avail, Character &guy,
-        const std::optional<tripoint> &workplace, const std::string &qry_comps,
+        const std::optional<tripoint> &selected_workplace,
+        const std::optional<tripoint> &effective_workplace, const std::string &qry_comps,
         const int batch_size, const int fold_width, const nc_color &color )
 {
     if( info_cache.recp != &recp ||
@@ -1098,7 +1225,8 @@ static const std::vector<std::string> &cached_recipe_info( recipe_info_cache &in
         info_cache.qry_comps = qry_comps;
         info_cache.batch_size = batch_size;
         info_cache.fold_width = fold_width;
-        info_cache.text = recipe_info( recp, avail, guy, workplace, qry_comps, batch_size,
+        info_cache.text = recipe_info( recp, avail, guy, selected_workplace,
+                                      effective_workplace, qry_comps, batch_size,
                                       fold_width, color );
     }
     return info_cache.text;
@@ -1381,7 +1509,7 @@ crafting_selection select_crafter_and_crafting_recipe(
     int recipe_info_scroll = 0;
     int item_info_scroll = 0;
     int item_info_scroll_popup = 0;
-    const int headHeight = 5;
+    const int headHeight = 3;
     const int subHeadHeight = 2;
 
     bool isWide = false;
@@ -1552,12 +1680,17 @@ crafting_selection select_crafter_and_crafting_recipe(
     std::map<Character *, recipe_subset> recipes_by_crafter;
     const recipe_subset *known_recipes = nullptr;
     std::map<const recipe *, availability> availability_cache;
+    std::optional<tripoint> effective_workplace;
     const auto rebuild_recipes = [&]() {
+        effective_workplace = resolve_crafting_workplace( *crafter, workplace );
         available_recipes = recipe_subset();
         recipes_by_crafter.clear();
         for( Character *group_member : crafting_group ) {
+            const std::optional<tripoint> member_workplace = resolve_crafting_workplace(
+                        *group_member, workplace );
             recipe_subset member_recipes = group_member->get_available_recipes(
-                                               crafting_inventory_at( *group_member, workplace ) );
+                                               crafting_inventory_at( *group_member,
+                                                       member_workplace ) );
             available_recipes.include( member_recipes );
             recipes_by_crafter.emplace( group_member, std::move( member_recipes ) );
         }
@@ -1649,14 +1782,6 @@ crafting_selection select_crafter_and_crafting_recipe(
         if( !show_hidden ) {
             draw_hidden_amount( w_head_info, num_hidden, num_recipe );
         }
-        const std::string crafter_label = string_format( _( "当前制作者：%s" ),
-                                          crafter->name_and_maybe_activity() );
-        mvwprintz( w_head_info, point( 1, 2 ), c_light_cyan, "%s",
-                   trim_by_length( crafter_label, std::max( 0, getmaxx( w_head_info ) - 2 ) ) );
-        const std::string workplace_label = string_format( _( "工作地点：%s" ),
-                                            workplace_display_name( workplaces, workplace ) );
-        mvwprintz( w_head_info, point( 1, 3 ), c_light_cyan, "%s",
-                   trim_by_length( workplace_label, std::max( 0, getmaxx( w_head_info ) - 2 ) ) );
         wnoutrefresh( w_head_info );
 
         // Clear the screen of recipe data, and draw it anew
@@ -1733,7 +1858,7 @@ crafting_selection select_crafter_and_crafting_recipe(
         if( !current.empty() ) {
             const recipe &recp = *current[line];
 
-            draw_can_craft_indicator( w_head_info, recp, *crafter, workplace );
+            draw_can_craft_indicator( w_head_info, recp, *crafter, effective_workplace );
 
             const availability &avail = available[line];
             // border + padding + name + padding
@@ -1753,8 +1878,8 @@ crafting_selection select_crafter_and_crafting_recipe(
             }
 
             const std::vector<std::string> &info = cached_recipe_info(
-                        r_info_cache, recp, avail, *crafter, workplace, qry_comps, batch_size,
-                        fold_width, color );
+                        r_info_cache, recp, avail, *crafter, workplace, effective_workplace,
+                        qry_comps, batch_size, fold_width, color );
 
             const int total_lines = info.size();
             if( recipe_info_scroll < 0 ) {
@@ -1798,7 +1923,7 @@ crafting_selection select_crafter_and_crafting_recipe(
             } else if( cur_recipe->is_nested() ) {
                 std::string desc = cur_recipe->description.translated() + "\n\n";;
                 desc += list_nested( *crafter, cur_recipe, available_recipes, known_recipes,
-                                     workplace );
+                                     effective_workplace );
                 fold_and_print( w_iteminfo, point_zero, item_info_width, c_light_gray, desc );
                 scrollbar().offset_x( item_info_width - 1 ).offset_y( 0 ).content_size( 1 ).viewport_size( getmaxy(
                             w_iteminfo ) ).apply( w_iteminfo );
@@ -1833,7 +1958,8 @@ crafting_selection select_crafter_and_crafting_recipe(
                 current.clear();
                 for( int i = 1; i <= 50; i++ ) {
                     current.push_back( chosen );
-                    available.emplace_back( *crafter, chosen, i, known_recipes, workplace );
+                    available.emplace_back( *crafter, chosen, i, known_recipes,
+                                            effective_workplace );
                 }
                 indent.assign( current.size(), 0 );
             } else {
@@ -1888,7 +2014,8 @@ crafting_selection select_crafter_and_crafting_recipe(
                 for( const recipe *e : current ) {
                     if( !availability_cache.count( e ) ) {
                         availability_cache.emplace(
-                            e, availability( *crafter, e, 1, known_recipes, workplace ) );
+                            e, availability( *crafter, e, 1, known_recipes,
+                                             effective_workplace ) );
                     }
                 }
 
@@ -1926,8 +2053,8 @@ crafting_selection select_crafter_and_crafting_recipe(
                 // have to do this after we sort the list
                 indent.assign( current.size(), 0 );
                 expand_recipes( current, indent, availability_cache, *crafter, known_recipes,
-                                workplace, unread_recipes_first, highlight_unread_recipes,
-                                available_recipes,
+                                effective_workplace, unread_recipes_first,
+                                highlight_unread_recipes, available_recipes,
                                 uistate.hidden_recipes );
 
                 std::transform( current.begin(), current.end(),
@@ -2351,6 +2478,8 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
 
     const auto summarize = [&]( Character &candidate,
                                 const std::optional<tripoint> &candidate_workplace ) {
+        const std::optional<tripoint> effective_candidate_workplace = resolve_crafting_workplace(
+                    candidate, candidate_workplace );
         const npc *candidate_npc = candidate.as_npc();
         const bool asleep = candidate.in_sleep_state();
         const bool busy = candidate_npc != nullptr &&
@@ -2366,10 +2495,6 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
         if( candidate.get_perceived_pain() > 0 ) {
             conditions.emplace_back( _( "疼痛" ) );
         }
-        if( candidate_workplace ) {
-            conditions.emplace_back( workplace_distance_text( candidate, *candidate_workplace ) );
-        }
-
         option_status result;
         result.condition = enumerate_as_string( conditions, enumeration_conjunction::none );
         if( rec == nullptr || rec->is_nested() ) {
@@ -2377,9 +2502,11 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
         }
 
         recipe_subset candidate_recipes = candidate.get_available_recipes(
-                crafting_inventory_at( candidate, candidate_workplace ) );
-        const availability avail( candidate, rec, 1, &candidate_recipes, candidate_workplace );
-        const inventory &inv = crafting_inventory_at( candidate, candidate_workplace );
+                                              crafting_inventory_at( candidate,
+                                                      effective_candidate_workplace ) );
+        const availability avail( candidate, rec, 1, &candidate_recipes,
+                                  effective_candidate_workplace );
+        const inventory &inv = crafting_inventory_at( candidate, effective_candidate_workplace );
         const bool has_requirements = rec->deduped_requirements().can_make_with_inventory(
                                           inv,
                                           rec->get_component_filter( recipe_filter_flags::none ),
@@ -2417,64 +2544,108 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
         return result;
     };
 
+    enum class settings_page : int {
+        crafter,
+        workplace
+    };
+
     const int original_crafter = current_crafter;
     const std::optional<tripoint> original_workplace = workplace;
-    int selected_row = current_crafter + 1;
-
-    while( true ) {
-        crafting_uimenu menu( 5 );
-        menu.set_title( _( "制造设置" ) );
-        menu.set_header( { _( "类型" ), _( "选择" ), _( "可制作" ), _( "缺少" ),
-                           _( "状态或说明" ) } );
-        menu.addentry( 0, true, { _( "返回" ), _( "应用当前设置" ), "-", "-",
-                                 _( "选择制作者或工作地点后可继续调整" ) } );
-
-        for( size_t i = 0; i < crafting_group.size(); ++i ) {
-            Character *candidate = crafting_group[i];
-            const npc *candidate_npc = candidate->as_npc();
-            const bool asleep = candidate->in_sleep_state();
-            const bool busy = candidate_npc != nullptr &&
-                              ( candidate_npc->has_activity() || !candidate->activity.is_null() );
-            const bool selectable = candidate->is_avatar() || ( !asleep && !busy );
-            const option_status status = summarize( *candidate, workplace );
-            const std::string marker = static_cast<int>( i ) == current_crafter ?
-                                       colorize( "* ", c_green ) : "  ";
-            menu.addentry( 1000 + static_cast<int>( i ), selectable,
-                           { _( "制作者" ), marker + ( candidate->is_avatar() ? _( "你" ) :
-                                                       candidate->get_name() ),
-                             status.craftable, status.missing, status.condition } );
-        }
-
-        Character &candidate = *crafting_group[current_crafter];
-        for( size_t i = 0; i < workplaces.size(); ++i ) {
-            const crafting_workplace &candidate_workplace = workplaces[i];
-            const option_status status = summarize( candidate, candidate_workplace.location );
-            const std::string marker = candidate_workplace.location == workplace ?
-                                       colorize( "* ", c_green ) : "  ";
-            menu.addentry( 2000 + static_cast<int>( i ), candidate_workplace.selectable,
-                           { _( "工作地点" ), marker + candidate_workplace.name,
-                             status.craftable, status.missing,
-                             workplace_status_text( candidate_workplace, candidate ) } );
-        }
-
-        menu.set_selected( selected_row );
-        const int choice = menu.query();
-        if( choice <= 0 ) {
+    settings_page page = settings_page::crafter;
+    int crafter_selected_row = current_crafter;
+    int workplace_selected_row = 0;
+    for( size_t i = 0; i < workplaces.size(); ++i ) {
+        if( workplaces[i].location == workplace ) {
+            workplace_selected_row = static_cast<int>( i );
             break;
         }
+    }
+
+    while( true ) {
+        Character &selected_crafter = *crafting_group[current_crafter];
+        crafting_uimenu menu( page == settings_page::crafter ? 4 : 5 );
+        menu.set_title( _( "制造设置" ) );
+        menu.set_preamble( page == settings_page::crafter ?
+                           _( "〈 制作者 〉　工作地点" ) : _( "制作者　〈 工作地点 〉" ) );
+        if( page == settings_page::crafter ) {
+            menu.set_header( { _( "制作者" ), _( "可制作" ), _( "缺少" ), _( "状态" ) } );
+            const std::optional<tripoint> effective = resolve_crafting_workplace(
+                        selected_crafter, workplace );
+            menu.set_footer( string_format(
+                                 _( "左右方向键切换分页，回车选择，Esc返回。当前工作地点：%s" ),
+                                 selected_workplace_text( selected_crafter, workplace,
+                                         effective ) ) );
+
+            for( size_t i = 0; i < crafting_group.size(); ++i ) {
+                Character *candidate = crafting_group[i];
+                const npc *candidate_npc = candidate->as_npc();
+                const bool asleep = candidate->in_sleep_state();
+                const bool busy = candidate_npc != nullptr &&
+                                  ( candidate_npc->has_activity() ||
+                                    !candidate->activity.is_null() );
+                const bool selectable = candidate->is_avatar() || ( !asleep && !busy );
+                const option_status status = summarize( *candidate, workplace );
+                const std::string marker = static_cast<int>( i ) == current_crafter ?
+                                           colorize( "* ", c_green ) : "  ";
+                menu.addentry( 1000 + static_cast<int>( i ), selectable,
+                               { marker + ( candidate->is_avatar() ? _( "你" ) :
+                                            candidate->get_name() ),
+                                 status.craftable, status.missing, status.condition } );
+            }
+            menu.set_selected( crafter_selected_row );
+        } else {
+            menu.set_header( { _( "工作地点" ), _( "可制作" ), _( "缺少" ),
+                               _( "相对制作者" ), _( "说明" ) } );
+            const std::string crafter_name = selected_crafter.is_avatar() ? _( "你" ) :
+                                             selected_crafter.get_name();
+            menu.set_footer( string_format(
+                                 _( "左右方向键切换分页，回车选择，Esc返回。方位与距离以当前制作者“%s”为基准。" ),
+                                 crafter_name ) );
+
+            for( size_t i = 0; i < workplaces.size(); ++i ) {
+                const crafting_workplace &candidate_workplace = workplaces[i];
+                const option_status status = summarize( selected_crafter,
+                                             candidate_workplace.location );
+                const std::string marker = candidate_workplace.location == workplace ?
+                                           colorize( "* ", c_green ) : "  ";
+                const std::string marked = candidate_workplace.marked ?
+                                           colorize( "◆ ", c_light_cyan ) : "";
+                menu.addentry( 2000 + static_cast<int>( i ), candidate_workplace.selectable,
+                               { marker + marked + candidate_workplace.name,
+                                 status.craftable, status.missing,
+                                 workplace_relative_text( candidate_workplace, selected_crafter ),
+                                 workplace_detail_text( candidate_workplace, selected_crafter ) } );
+            }
+            menu.set_selected( workplace_selected_row );
+        }
+
+        const crafting_uimenu::query_result result = menu.query( true );
+        if( result.retval == UILIST_ADDITIONAL &&
+            ( result.action == "UILIST.LEFT" || result.action == "UILIST.RIGHT" ) ) {
+            if( page == settings_page::crafter ) {
+                crafter_selected_row = result.selected;
+                page = settings_page::workplace;
+            } else {
+                workplace_selected_row = result.selected;
+                page = settings_page::crafter;
+            }
+            continue;
+        }
+        if( result.retval == UILIST_CANCEL ) {
+            break;
+        }
+        const int choice = result.retval;
         if( choice >= 1000 && choice < 2000 ) {
-            const int selected_crafter = choice - 1000;
-            if( selected_crafter >= 0 &&
-                static_cast<size_t>( selected_crafter ) < crafting_group.size() ) {
-                current_crafter = selected_crafter;
-                selected_row = current_crafter + 1;
+            const int selected = choice - 1000;
+            if( selected >= 0 && static_cast<size_t>( selected ) < crafting_group.size() ) {
+                current_crafter = selected;
+                crafter_selected_row = selected;
             }
         } else if( choice >= 2000 ) {
-            const int selected_workplace = choice - 2000;
-            if( selected_workplace >= 0 &&
-                static_cast<size_t>( selected_workplace ) < workplaces.size() ) {
-                workplace = workplaces[selected_workplace].location;
-                selected_row = 1 + static_cast<int>( crafting_group.size() ) + selected_workplace;
+            const int selected = choice - 2000;
+            if( selected >= 0 && static_cast<size_t>( selected ) < workplaces.size() ) {
+                workplace = workplaces[selected].location;
+                workplace_selected_row = selected;
             }
         }
     }

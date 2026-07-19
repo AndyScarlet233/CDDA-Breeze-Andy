@@ -104,6 +104,8 @@ static const string_id<struct furn_t> furn_f_fake_bench_hands( "f_fake_bench_han
 
 static const string_id<struct furn_t> furn_f_ground_crafting_spot( "f_ground_crafting_spot" );
 
+static const field_type_id fd_crafting_spot( "fd_crafting_spot" );
+
 static const trait_id trait_BURROW( "BURROW" );
 static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
 static const trait_id trait_DEBUG_CNF( "DEBUG_CNF" );
@@ -117,10 +119,65 @@ static const std::string flag_UNCRAFT_LIQUIDS_CONTAINED( "UNCRAFT_LIQUIDS_CONTAI
 
 class basecamp;
 
+static float workbench_multiplier_at( map &here, const tripoint &loc )
+{
+    if( const std::optional<vpart_reference> vp = here.veh_at( loc ).part_with_feature(
+                "WORKBENCH", true ) ) {
+        if( const std::optional<vpslot_workbench> &wb = vp->part().info().get_workbench_info() ) {
+            return wb->multiplier;
+        }
+        return 0.0f;
+    }
+    if( here.has_furn( loc ) && here.furn( loc ).obj().workbench ) {
+        return here.furn( loc ).obj().workbench->multiplier;
+    }
+    return 0.0f;
+}
+
+std::optional<tripoint> resolve_crafting_workplace(
+    const Character &crafter, const std::optional<tripoint> &selected_workplace )
+{
+    if( selected_workplace ) {
+        return selected_workplace;
+    }
+
+    map &here = get_map();
+    std::optional<tripoint> best_marked;
+    std::optional<tripoint> best_regular;
+    float best_marked_multiplier = -1.0f;
+    float best_regular_multiplier = -1.0f;
+
+    // Automatic selection only examines the nine tiles around the crafter.  Callers resolve this
+    // once when the crafter or selected workplace changes and reuse the returned location.
+    for( const tripoint &loc : here.points_in_radius( crafter.pos(), 1 ) ) {
+        if( here.dangerous_field_at( loc ) ) {
+            continue;
+        }
+        const float multiplier = workbench_multiplier_at( here, loc );
+        if( multiplier <= 0.0f ) {
+            continue;
+        }
+        const bool marked = here.furn( loc ) == furn_f_ground_crafting_spot ||
+                            here.get_field( loc, fd_crafting_spot ) != nullptr;
+        if( marked ) {
+            if( multiplier > best_marked_multiplier ) {
+                best_marked_multiplier = multiplier;
+                best_marked = loc;
+            }
+        } else if( multiplier > best_regular_multiplier ) {
+            best_regular_multiplier = multiplier;
+            best_regular = loc;
+        }
+    }
+
+    return best_marked ? best_marked : best_regular;
+}
+
 static const inventory &crafting_inventory_at( Character &crafter,
         const std::optional<tripoint> &workplace )
 {
-    return workplace ? crafter.crafting_inventory( *workplace, PICKUP_RANGE, true ) :
+    const std::optional<tripoint> effective = resolve_crafting_workplace( crafter, workplace );
+    return effective ? crafter.crafting_inventory( *effective, PICKUP_RANGE, true ) :
            crafter.crafting_inventory();
 }
 
@@ -159,6 +216,9 @@ static bool npc_can_reach_crafting_position( const Character &crafter, const tri
 static std::string crafting_failure_reason( Character &crafter, const recipe &rec,
         int batch_size, const std::optional<tripoint> &workplace )
 {
+    const std::optional<tripoint> effective_workplace = resolve_crafting_workplace(
+                crafter, workplace );
+
     if( rec.category == "CC_BUILDING" ) {
         return _( "大地图地形建造配方尚未实现。" );
     }
@@ -172,23 +232,24 @@ static std::string crafting_failure_reason( Character &crafter, const recipe &re
         return string_format( _( "%s正在忙碌，无法开始新的制作。" ), crafter.get_name() );
     }
 
-    if( workplace ) {
+    if( effective_workplace ) {
         map &here = get_map();
-        if( here.dangerous_field_at( *workplace ) ) {
+        if( here.dangerous_field_at( *effective_workplace ) ) {
             return _( "所选工作地点存在危险，无法开始制作。" );
         }
-        if( !has_safe_crafting_position( *workplace ) ) {
+        if( !has_safe_crafting_position( *effective_workplace ) ) {
             return _( "所选工作地点附近没有可以安全站立的位置。" );
         }
-        if( crafter.is_avatar() && square_dist( crafter.pos(), *workplace ) > 1 ) {
+        if( crafter.is_avatar() && square_dist( crafter.pos(), *effective_workplace ) > 1 ) {
             return _( "你必须先走到所选工作地点旁边才能开始制作。" );
         }
-        if( crafter.is_npc() && !npc_can_reach_crafting_position( crafter, *workplace ) ) {
+        if( crafter.is_npc() &&
+            !npc_can_reach_crafting_position( crafter, *effective_workplace ) ) {
             return string_format( _( "%s无法到达所选工作地点。" ), crafter.get_name() );
         }
     }
 
-    const inventory &inv = crafting_inventory_at( crafter, workplace );
+    const inventory &inv = crafting_inventory_at( crafter, effective_workplace );
     if( !crafter.has_recipe( &rec, inv, crafter.get_crafting_helpers() ) ) {
         return string_format( _( "%s不知道这个配方，也没有可用的配方资料。" ),
                               crafter.is_avatar() ? _( "你" ) : crafter.get_name() );
@@ -211,8 +272,8 @@ static std::string crafting_failure_reason( Character &crafter, const recipe &re
                string_format( _( "%s的士气太低，无法制作这件物品。" ), crafter.get_name() );
     }
     if( crafter.lighting_craft_speed_multiplier( rec,
-            workplace ? *workplace : tripoint_zero ) <= 0.0f ) {
-        return workplace ? _( "所选工作地点光照不足，无法制作。" ) :
+            effective_workplace ? *effective_workplace : tripoint_zero ) <= 0.0f ) {
+        return effective_workplace ? _( "所选工作地点光照不足，无法制作。" ) :
                _( "当前制作者所在位置光照不足，无法制作。" );
     }
 
@@ -231,6 +292,8 @@ static std::string crafting_failure_reason( Character &crafter, const recipe &re
 static bool crafting_allowed( const Character &p, const recipe &rec,
                               const std::optional<tripoint> &workplace )
 {
+    const std::optional<tripoint> effective_workplace = resolve_crafting_workplace( p, workplace );
+
     if( p.morale_crafting_speed_multiplier( rec ) <= 0.0f ) {
         if (p.is_avatar()) {
             add_msg(m_info, _("Your morale is too low to craft such a difficult thing…"));
@@ -244,7 +307,7 @@ static bool crafting_allowed( const Character &p, const recipe &rec,
     }
 
     if( p.lighting_craft_speed_multiplier( rec,
-            workplace ? *workplace : tripoint_zero ) <= 0.0f ) {
+            effective_workplace ? *effective_workplace : tripoint_zero ) <= 0.0f ) {
         if (p.is_avatar()) {
             add_msg(m_info, _("You can't see to craft!"));
         }
@@ -431,22 +494,30 @@ float Character::crafting_speed_multiplier( const item &craft,
                               get_limb_score( limb_score_manip );
 
     if( light_multi <= 0.0f ) {
-        add_msg_if_player( m_bad, _( "You can no longer see well enough to keep crafting." ) );
+        add_msg_player_or_npc( m_bad,
+                               _( "你已经看不清，无法继续制造。" ),
+                               _( "<npcname>已经看不清，无法继续制造。" ) );
         return 0.0f;
     }
     if( bench_multi <= 0.1f || ( bench_multi <= 0.33f && total_multi <= 0.2f ) ) {
-        add_msg_if_player( m_bad, _( "The %s is too large and/or heavy to work on.  You may want to"
-                                     " use a workbench or a lifting tool" ), craft.tname() );
+        add_msg_player_or_npc( m_bad,
+                               _( "%s过于沉重或庞大，当前工作台无法继续加工。" ),
+                               _( "%s过于沉重或庞大，<npcname>无法在当前工作台继续加工。" ),
+                               craft.tname() );
         return 0.0f;
     }
     if( morale_multi <= 0.2f || ( morale_multi <= 0.33f && total_multi <= 0.2f ) ) {
-        add_msg_if_player( m_bad, _( "Your morale is too low to continue crafting." ) );
+        add_msg_player_or_npc( m_bad,
+                               _( "你的士气过低，无法继续制造。" ),
+                               _( "<npcname>的士气过低，停止了制造。" ) );
         return 0.0f;
     }
 
     // If we're working below 20% speed, just give up
     if( total_multi <= 0.2f ) {
-        add_msg_if_player( m_bad, _( "You are too frustrated to continue and just give up." ) );
+        add_msg_player_or_npc( m_bad,
+                               _( "你过于沮丧，只能停止制造。" ),
+                               _( "<npcname>过于沮丧，停止了制造。" ) );
         return 0.0f;
     }
 
@@ -864,7 +935,8 @@ void Character::make_craft_with_command( const recipe_id &id_to_make, int batch_
         return;
     }
 
-    *last_craft = craft_command( &recipe_to_make, batch_size, is_long, this, loc );
+    const std::optional<tripoint> effective_workplace = resolve_crafting_workplace( *this, loc );
+    *last_craft = craft_command( &recipe_to_make, batch_size, is_long, this, effective_workplace );
     last_craft->execute();
 }
 
@@ -1001,35 +1073,7 @@ static item_location place_craft_or_disassembly(
     item_location craft_in_world;
 
     map &here = get_map();
-    // Only choose a nearby workbench automatically when the caller did not
-    // explicitly select a workplace.
-    if( !target ) {
-        float best_bench_multi = 0.0f;
-        for( const tripoint &adj : here.points_in_radius( ch.pos(), 1 ) ) {
-            if( here.dangerous_field_at( adj ) ) {
-                continue;
-            }
-            if( const cata::value_ptr<furn_workbench_info> &wb =
-                here.furn( adj ).obj().workbench ) {
-                if( wb->multiplier > best_bench_multi ) {
-                    best_bench_multi = wb->multiplier;
-                    target = adj;
-                }
-            } else if( const std::optional<vpart_reference> vp = here.veh_at(
-                           adj ).part_with_feature( "WORKBENCH", true ) ) {
-                if( const std::optional<vpslot_workbench> &wb_info =
-                    vp->part().info().get_workbench_info() ) {
-                    if( wb_info->multiplier > best_bench_multi ) {
-                        best_bench_multi = wb_info->multiplier;
-                        target = adj;
-                    }
-                } else {
-                    debugmsg( "part '%s' with WORKBENCH flag has no workbench info",
-                              vp->part().name() );
-                }
-            }
-        }
-    }
+    target = resolve_crafting_workplace( ch, target );
 
     // Crafting without a workbench
     if( !target ) {
