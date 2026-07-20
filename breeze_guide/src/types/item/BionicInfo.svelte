@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "@transifex/native";
+import { t } from "../../界面翻译";
 import type { BionicSlot, ItemBasicInfo } from "../../types";
 import ThingLink from "../ThingLink.svelte";
 

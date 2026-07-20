@@ -4,7 +4,7 @@ import { CddaData, itemGroupFromVehicle } from "../../data";
 import { showProbability } from "./utils";
 import LimitedList from "../../LimitedList.svelte";
 import ThingLink from "../ThingLink.svelte";
-import { t } from "@transifex/native";
+import { t } from "../../界面翻译";
 
 export let item_id: string;
 

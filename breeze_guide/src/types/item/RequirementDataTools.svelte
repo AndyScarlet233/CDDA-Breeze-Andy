@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "@transifex/native";
+import { t } from "../../界面翻译";
 import InterpolatedTranslation from "../../InterpolatedTranslation.svelte";
 
 import { getContext } from "svelte";
@@ -51,7 +51,7 @@ let { tools, qualities } =
             {#if count <= 0}
               {#if data.craftingPseudoItem(toolId)}
                 <a
-                  href="/furniture/{data.craftingPseudoItem(
+                  href="{import.meta.env.BASE_URL}furniture/{data.craftingPseudoItem(
                     toolId,
                   )}{location.search}"
                   >{singularName(data.byId("item", toolId))}</a>

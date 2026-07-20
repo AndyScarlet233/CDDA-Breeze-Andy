@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "@transifex/native";
+import { t } from "./界面翻译";
 
 const isTesting =
   typeof globalThis !== undefined && (globalThis as any)?.__isTesting__;

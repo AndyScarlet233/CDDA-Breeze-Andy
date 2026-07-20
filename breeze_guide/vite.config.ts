@@ -22,6 +22,7 @@ export default defineConfig({
     svelte(),
     svelteTesting(),
     VitePWA({
+      registerType: "autoUpdate",
       devOptions: {
         enabled: true,
       },
@@ -50,6 +51,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "index.html",
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
         runtimeCaching: [
           {
             urlPattern: /\/data\/(本体|模组)\/.*\.json(\?.*)?$/,

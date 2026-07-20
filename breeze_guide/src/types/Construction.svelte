@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "@transifex/native";
+import { t } from "../界面翻译";
 import JsonView from "../JsonView.svelte";
 
 import { getContext } from "svelte";

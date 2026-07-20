@@ -4,7 +4,7 @@ import ThingLink from "./ThingLink.svelte";
 import type { AddictionType } from "../types";
 import { getContext } from "svelte";
 import LimitedList from "../LimitedList.svelte";
-import { t } from "@transifex/native";
+import { t } from "../界面翻译";
 import ItemSymbol from "./item/ItemSymbol.svelte";
 
 export let item: AddictionType;
