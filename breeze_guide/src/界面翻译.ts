@@ -1,4 +1,3 @@
-import { t as transifexT } from "@transifex/native";
 import { i18n } from "./data";
 
 type TranslationParams = Record<string, unknown> & {
@@ -13,7 +12,7 @@ const fixedTranslations: Record<string, string> = {
   "Weight": "重量",
   "Length": "长度",
   "Compatible Magazines": "兼容弹匣",
-  "Flags": "标志",
+  "Flags": "属性标签",
   "Usage": "用途",
   "Tool": "工具",
   "Tools": "工具",
@@ -50,18 +49,18 @@ const fixedTranslations: Record<string, string> = {
   "Monsters": "怪物",
   "Furniture": "家具",
   "Terrain": "地形",
-  "Vehicle Part": "车辆部件",
-  "Vehicle Parts": "车辆部件",
-  "Vehicle": "车辆",
-  "Vehicles": "车辆",
+  "Vehicle Part": "载具部件",
+  "Vehicle Parts": "载具部件",
+  "Vehicle": "载具",
+  "Vehicles": "载具",
   "Mutation": "变异",
   "Mutations": "变异",
   "Mutation Category": "变异类别",
   "Mutation Type": "变异类型",
   "Martial Art": "武术",
   "Martial Arts": "武术",
-  "Proficiency": "专精",
-  "Proficiencies": "专精",
+  "Proficiency": "专长",
+  "Proficiencies": "专长",
   "Skill": "技能",
   "Skills Used": "使用技能",
   "Skills Required": "所需技能",
@@ -70,7 +69,7 @@ const fixedTranslations: Record<string, string> = {
   "Armor": "护甲",
   "Bionic": "仿生器官",
   "Bionics": "仿生器官",
-  "Flag": "标志",
+  "Flag": "标记",
   "Fault": "故障",
   "Vitamin": "维生素",
   "Vitamins": "维生素",
@@ -125,9 +124,9 @@ const fixedTranslations: Record<string, string> = {
   "Morale": "士气",
   "Spoils In": "腐坏时间",
   "Tools Required": "所需工具",
-  "Qualities": "工具质量",
-  "Qualities (Charged)": "充能时工具质量",
-  "Quality": "工具质量",
+  "Qualities": "工具功能",
+  "Qualities (Charged)": "充能时工具功能",
+  "Quality": "工具功能",
   "Provided By": "提供来源",
   "Used By": "用途",
   "Used In Construction": "用于建造",
@@ -227,6 +226,35 @@ const fixedTranslations: Record<string, string> = {
   "Gear worn on this body part must be large enough to accommodate abnormally large mutated anatomy.":
     "穿戴在这个身体部位的装备必须足够宽大，才能容纳异常增大的变异肢体。",
   "You can't have two mutations that share a type.": "不能同时拥有两个相同类型的变异。",
+  "Behavior": "行为",
+  "Upgrades Into": "进化为",
+  "Drops": "掉落物",
+  "Avg. Count": "平均数量",
+  "Butchering Results": "屠宰产物",
+  "with a half-life of {days} days": "，半衰期为 {days} 天",
+  "night": "夜间",
+  "Day": "天",
+  "days": "天",
+  "Faction": "阵营",
+  "Status": "状态",
+  "Source": "来源",
+  "Search": "搜索",
+  "Search...": "搜索……",
+  "Search……": "搜索……",
+  "Guide data failed to load": "指南数据加载失败",
+  "Reload": "重新加载",
+  "Mod data": "模组数据",
+  "objects": "个对象",
+  "required": "必需",
+  "Version:": "版本：",
+  "Behavioral": "行为",
+  "Attack Cost": "攻击耗时",
+  "Upgrade Into": "进化为",
+  "Drop": "掉落物",
+  "Average Count": "平均数量",
+  "Butchering": "屠宰",
+  "Tool Quality": "工具功能",
+  "Tool Qualities": "工具功能",
 };
 
 const typeTranslations: Record<string, string> = {
@@ -251,19 +279,19 @@ const typeTranslations: Record<string, string> = {
   monster: "怪物",
   furniture: "家具",
   terrain: "地形",
-  vehicle_part: "车辆部件",
-  tool_quality: "工具质量",
+  vehicle_part: "载具部件",
+  tool_quality: "功能",
   mutation: "变异",
   mutation_category: "变异类别",
   mutation_type: "变异类型",
   martial_art: "武术",
-  json_flag: "标志",
-  monster_flag: "怪物标志",
+  json_flag: "标记",
+  monster_flag: "怪物标记",
   achievement: "成就",
-  conduct: "行为",
-  proficiency: "专精",
+  conduct: "守则",
+  proficiency: "专长",
   skill: "技能",
-  vehicle: "车辆",
+  vehicle: "载具",
   overmap_special: "地点",
   city_building: "地点",
   bionic: "仿生器官",
@@ -295,7 +323,10 @@ export function t(source: string, params: TranslationParams = {}): string {
     // 翻译数据尚未加载时使用内置中文表。
   }
   if (translated === source) translated = fixedTranslations[source] ?? source;
-  return transifexT(translated, values as Record<string, unknown>);
+  for (const [key, value] of Object.entries(values)) {
+    translated = translated.replaceAll(`{${key}}`, String(value));
+  }
+  return translated;
 }
 
 export function guideTypeName(type: string): string {

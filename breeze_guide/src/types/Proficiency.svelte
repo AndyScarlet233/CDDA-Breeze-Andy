@@ -5,7 +5,7 @@ import type { Proficiency } from "../types";
 import { getContext } from "svelte";
 import LimitedList from "../LimitedList.svelte";
 import ItemSymbol from "./item/ItemSymbol.svelte";
-import { t } from "../界面翻译";
+import { t } from "@transifex/native";
 import Recipe from "./Recipe.svelte";
 
 export let item: Proficiency;

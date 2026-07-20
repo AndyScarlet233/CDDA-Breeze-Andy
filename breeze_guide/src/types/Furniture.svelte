@@ -5,7 +5,7 @@ import ThingLink from "./ThingLink.svelte";
 import { getContext } from "svelte";
 import Construction from "./Construction.svelte";
 import ItemSymbol from "./item/ItemSymbol.svelte";
-import { t } from "../界面翻译";
+import { t } from "@transifex/native";
 import TerFurnActivity from "./TerFurnActivity.svelte";
 import FurnitureSpawnedIn from "./item/FurnitureSpawnedIn.svelte";
 import LimitedList from "../LimitedList.svelte";

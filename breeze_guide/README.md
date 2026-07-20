@@ -29,7 +29,7 @@ yarn build:pages
 
 标准模组不需要修改原有 `modinfo.json`。生成器会读取其中的 `id`、名称、作者、维护者、说明、版本、分类和依赖，并把模组 JSON 独立生成为一个数据包。玩家启用某个模组时，网页会自动加入索引中存在的依赖模组。
 
-内置模组默认全部进入可选索引，`Breeze` 为必需且默认启用。可以在 `模组发布清单.json` 中排除内置模组、改变默认启用项，或把某些模组设为必需。
+内置模组会进入可选索引，但默认不参与检索，玩家需要在页面底部按需启用。只包含机制开关、白名单或贴图配置等无可检索实体的模组会自动略过。可以在 `模组发布清单.json` 中排除内置模组、改变默认启用项，或把某些模组设为必需。
 
 开发者上传外部模组时，只需：
 
@@ -46,4 +46,4 @@ yarn build:pages
 
 ## 来源与许可
 
-网页代码基于 nornagon/cdda-guide 及 CCB-GUIDE 的公开实现继续适配，网页源码遵循 GPL-3.0-only。游戏与模组数据仍分别遵循其原有许可和署名要求。
+网页代码基于 [nornagon/cdda-guide](https://github.com/nornagon/cdda-guide) 与 [CrimsonCrossBunker/CCB-GUIDE](https://github.com/CrimsonCrossBunker/CCB-GUIDE) 的公开实现继续适配，并保留 GPL-3.0-only 许可。游戏与模组数据仍分别遵循其原有许可和署名要求。

@@ -20,7 +20,7 @@ import { groupBy } from "./types/item/utils";
 import ProficiencyList from "./types/ProficiencyList.svelte";
 import OvermapAppearance from "./types/item/OvermapAppearance.svelte";
 import SourceBadge from "./SourceBadge.svelte";
-import { guideTypeName } from "./界面翻译";
+import { guideTypeName } from "./界面名称";
 
 export let type: string;
 export let data: CddaData;
@@ -63,9 +63,7 @@ function getProficiencyCategoryName(category_id: string) {
 const groupingFn =
   {
     monster: (m: Monster) => [m.default_faction ?? ""],
-    item: (i: Item) => [
-      `${guideTypeName(i.type)}（${getCategoryName(getCategory(i))}）`,
-    ],
+    item: (i: Item) => [`${i.type} (${getCategoryName(getCategory(i))})`],
     proficiency: (p: Proficiency) => [
       p.category ? getProficiencyCategoryName(p.category) : "",
     ],

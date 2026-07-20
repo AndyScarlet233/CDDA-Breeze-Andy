@@ -14,12 +14,12 @@ import {
 import SearchResults from "./SearchResults.svelte";
 import Catalog from "./Catalog.svelte";
 import dontPanic from "./assets/dont_panic.png";
-import InterpolatedTranslation from "./InterpolatedTranslation.svelte";
-import { guideTypeName, t } from "./界面翻译";
+import { t } from "@transifex/native";
 import type { SupportedTypeMapped, SupportedTypesWithMapped } from "./types";
 import throttle from "lodash/throttle";
 import debounce from "lodash/debounce";
 import { onDestroy } from "svelte";
+import { guideTypeName } from "./界面名称";
 
 let item: { type: string; id: string } | null = null;
 let search: string = "";
@@ -40,11 +40,9 @@ $: if (search !== renderedSearch) {
 
 onDestroy(updateRenderedSearch.cancel);
 
-const modSelectionStorageKey = "breeze-guide-enabled-mods-v2";
-
 function readSavedModIds(): string[] | undefined {
   try {
-    const saved = localStorage.getItem(modSelectionStorageKey);
+    const saved = localStorage.getItem("breeze-guide-enabled-mods-v3");
     if (saved === null) return undefined;
     const parsed = JSON.parse(saved);
     return Array.isArray(parsed) ? parsed.map(String) : undefined;
@@ -53,8 +51,8 @@ function readSavedModIds(): string[] | undefined {
   }
 }
 
-const savedModIds = readSavedModIds();
-let pendingModIds = savedModIds ?? [];
+const savedModIds = readSavedModIds() ?? [];
+let pendingModIds = [...savedModIds];
 let modSelectionInitialized = false;
 
 data.load(savedModIds);
@@ -74,20 +72,10 @@ function setPendingMod(id: string, checked: boolean) {
     : pendingModIds.filter((candidate) => candidate !== id);
 }
 
-function selectAllMods() {
-  pendingModIds = $modCatalog.map((mod) => mod.id);
-}
-
-function selectNoMods() {
-  pendingModIds = $modCatalog
-    .filter((mod) => mod.required)
-    .map((mod) => mod.id);
-}
-
 async function applyModSelection() {
   try {
     localStorage.setItem(
-      modSelectionStorageKey,
+      "breeze-guide-enabled-mods-v3",
       JSON.stringify(pendingModIds),
     );
   } catch {
@@ -97,13 +85,28 @@ async function applyModSelection() {
   pendingModIds = [...$enabledModIds];
 }
 
+
+function selectAllMods() {
+  pendingModIds = $modCatalog.map((mod) => mod.id);
+}
+
+function selectNoMods() {
+  pendingModIds = [];
+}
+
+function submitSearch(event: SubmitEvent) {
+  event.preventDefault();
+  clearItem();
+  renderSearchNow();
+}
+
 async function restoreDefaultMods() {
   try {
-    localStorage.removeItem(modSelectionStorageKey);
+    localStorage.removeItem("breeze-guide-enabled-mods-v3");
   } catch {
     // 同上。
   }
-  await data.load(undefined);
+  await data.load([]);
   pendingModIds = [...$enabledModIds];
 }
 
@@ -136,11 +139,11 @@ $: if (item && item.id && $data && $data.byIdMaybe(item.type as any, item.id)) {
   const it = $data.byId(item.type as any, item.id);
   document.title = `${singularName(
     it,
-  )} - 微风指南`;
+  )} - CDDA-Breeze 微风指南`;
 } else if (item && !item.id && item.type) {
-  document.title = `${guideTypeName(item.type)} - 微风指南`;
+  document.title = `${guideTypeName(item.type)} - CDDA-Breeze 微风指南`;
 } else {
-  document.title = "微风指南";
+  document.title = "CDDA-Breeze 微风指南";
 }
 
 load();
@@ -252,25 +255,25 @@ newRandomPage();
 <header>
   <nav>
     <div class="title">
-      <!-- svelte-ignore a11y-invalid-attribute -->
       <strong>
         <a
           href={import.meta.env.BASE_URL + location.search}
           on:click={() => (search = "")}
-          ><span class="wide">微风指南</span><span
-            class="narrow">微</span
+          ><span class="wide">CDDA-Breeze 微风指南</span><span
+            class="narrow">微风指南</span
           ></a>
       </strong>
     </div>
-    <div class="search">
+    <form class="search" on:submit={submitSearch}>
       <input
         style="margin: 0; width: 100%"
-        placeholder={t("搜索...")}
+        placeholder="搜索……"
+        aria-label="搜索指南"
         type="search"
         bind:value={search}
         on:input={clearItem}
         id="search" />
-    </div>
+    </form>
   </nav>
 </header>
 <main>
@@ -327,94 +330,63 @@ newRandomPage();
       src={dontPanic}
       height="200"
       width="343"
-      style="float:right"
-      alt="大大的友善字体写着'不要慌'" />
+      class="dont-panic"
+      alt="大大的友善字体写着不要慌" />
     <p>
-      <InterpolatedTranslation
-        str={t(
-          `{hhg} 是 CDDA-Breeze 的指南。你可以搜索游戏中的物品（如{link_flashlight}）、家具（如{link_table}）或怪物（如{link_zombie}），并查看它们的详细信息。数据来源于游戏本身的 JSON 文件。`,
-          {
-            hhg: "{hhg}",
-            link_flashlight: "{link_flashlight}",
-            link_table: "{link_table}",
-            link_zombie: "{link_zombie}",
-          },
-        )}
-        slot0="hhg"
-        slot1="link_flashlight"
-        slot2="link_table"
-        slot3="link_zombie">
-        <strong slot="0">微风指南</strong>
-        <a
-          slot="1"
-          href="{import.meta.env.BASE_URL}item/flashlight{location.search}"
-          >{t("flashlight", { _comment: "Item name" })}</a>
-        <a
-          slot="2"
-          href="{import.meta.env.BASE_URL}furniture/f_table{location.search}"
-          >{t("table", { _comment: "Furniture" })}</a>
-        <a
-          slot="3"
-          href="{import.meta.env.BASE_URL}monster/mon_zombie{location.search}"
-          >{t("zombie", { _comment: "Monster name" })}</a>
-      </InterpolatedTranslation>
+      <strong>CDDA-Breeze 微风指南</strong> 是末日回合制生存游戏
+      <a href="https://github.com/AndyScarlet233/CDDA-Breeze-Andy" target="_blank" rel="noreferrer">CDDA-Breeze</a>
+      的资料指南。你可以搜索游戏中的物品、怪物、家具、地形和其他内容，并直接查看由游戏 JSON 数据整理出的信息。
     </p>
     <p>
-      {t(`数据存储在本地，支持离线使用。`)}
+      指南会将已经载入的数据保存在浏览器中，并支持离线使用。只要成功访问过一次，之后即使临时断网，也可以继续查看已缓存的内容。
       {#if deferredPrompt}
-        <InterpolatedTranslation
-          str={t(
-            `也可以将其{installable_button}，脱离浏览器像普通应用一样使用。`,
-            { installable_button: "{installable_button}" },
-          )}
-          slot0="installable_button">
-          <button
-            slot="0"
-            class="disclosure"
-            on:click={(e) => {
-              e.preventDefault();
-              deferredPrompt.prompt();
-            }}
-            >{t("安装")}</button>
-        </InterpolatedTranslation>
+        <button
+          class="disclosure"
+          on:click={(event) => {
+            event.preventDefault();
+            deferredPrompt.prompt();
+          }}>安装为应用</button>
       {/if}
     </p>
+    <p class="guide-quote">
+      比《星际家庭保养指南》更流行，比《失重下可以做的53件事》更畅销，也比某些末日求生手册更容易查到真正有用的东西。
+    </p>
+    <p>
+      本指南由 Andy Scarlet 与 ChatGPT 维护，数据来自 CDDA-Breeze 游戏本体。发现问题时，可以前往
+      <a href="https://github.com/AndyScarlet233/CDDA-Breeze-Andy/issues" target="_blank" rel="noreferrer">GitHub 提交问题</a>。
+    </p>
 
-    <h2>{t("目录")}</h2>
-    <ul>
-      <li><a href="{import.meta.env.BASE_URL}item{location.search}">{t("物品")}</a></li>
-      <li><a href="{import.meta.env.BASE_URL}monster{location.search}">{t("怪物")}</a></li>
-      <li><a href="{import.meta.env.BASE_URL}furniture{location.search}">{t("家具")}</a></li>
-      <li><a href="{import.meta.env.BASE_URL}terrain{location.search}">{t("地形")}</a></li>
-      <li><a href="{import.meta.env.BASE_URL}vehicle_part{location.search}">{t("车辆部件")}</a></li>
-      <li><a href="{import.meta.env.BASE_URL}tool_quality{location.search}">{t("工具质量")}</a></li>
-      <li><a href="{import.meta.env.BASE_URL}mutation{location.search}">{t("变异")}</a></li>
-      <li><a href="{import.meta.env.BASE_URL}martial_art{location.search}">{t("武术")}</a></li>
-      <li><a href="{import.meta.env.BASE_URL}json_flag{location.search}">{t("标志")}</a></li>
+    <h2>目录</h2>
+    <ul class="catalog-list">
+      <li><a href="{import.meta.env.BASE_URL}item{location.search}">物品</a></li>
+      <li><a href="{import.meta.env.BASE_URL}monster{location.search}">怪物</a></li>
+      <li><a href="{import.meta.env.BASE_URL}furniture{location.search}">家具</a></li>
+      <li><a href="{import.meta.env.BASE_URL}terrain{location.search}">地形</a></li>
+      <li><a href="{import.meta.env.BASE_URL}vehicle_part{location.search}">载具部件</a></li>
+      <li><a href="{import.meta.env.BASE_URL}tool_quality{location.search}">功能</a></li>
+      <li><a href="{import.meta.env.BASE_URL}mutation{location.search}">变异</a></li>
+      <li><a href="{import.meta.env.BASE_URL}martial_art{location.search}">武术</a></li>
+      <li><a href="{import.meta.env.BASE_URL}json_flag{location.search}">标记</a></li>
       <li>
-        <a href="{import.meta.env.BASE_URL}achievement{location.search}">{t("成就")}</a> /
-        <a href="{import.meta.env.BASE_URL}conduct{location.search}">{t("行为")}</a>
+        <a href="{import.meta.env.BASE_URL}achievement{location.search}">成就</a> /
+        <a href="{import.meta.env.BASE_URL}conduct{location.search}">守则</a>
       </li>
-      <li><a href="{import.meta.env.BASE_URL}proficiency{location.search}">{t("专精")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}proficiency{location.search}">专长</a></li>
     </ul>
 
-    <InterpolatedTranslation
-      str={t(`或访问{link_random_page}。`, {
-        link_random_page: "{link_random_page}",
-      })}
-      slot0="link_random_page">
-      <a slot="0" href={randomPage} on:click={() => setTimeout(newRandomPage)}
-        >{t("随机页面")}</a>
-    </InterpolatedTranslation>
+    <p>
+      或者查看
+      <a href={randomPage} on:click={() => setTimeout(newRandomPage)}>随机页面</a>。
+    </p>
   {/if}
 
   {#if $modCatalog.length}
     <details class="mod-options">
       <summary>
-        {t("模组数据")}（{pendingModIds.length}/{$modCatalog.length}）
+        {t("模组数据")}（{$enabledModIds.length}/{$modCatalog.length}）
       </summary>
       <p class="mod-note">
-        {t("这里只显示维护者已经审核并发布、且包含可检索内容的模组。首次打开默认全选，玩家只能调整自己的检索范围，不能从网页上传模组。")}
+        这里只显示维护者已经审核并发布的模组数据。模组默认不参与检索，勾选后点击“应用选择”才会载入。
       </p>
       <div class="mod-grid">
         {#each $modCatalog as mod (mod.id)}
@@ -439,18 +411,10 @@ newRandomPage();
         {/each}
       </div>
       <div class="mod-actions">
-        <button type="button" class="secondary" on:click={selectAllMods} disabled={$loadProgress !== null}>
-          {t("全选")}
-        </button>
-        <button type="button" class="secondary" on:click={selectNoMods} disabled={$loadProgress !== null}>
-          {t("全不选")}
-        </button>
-        <button type="button" class="primary" on:click={applyModSelection} disabled={$loadProgress !== null}>
-          {t("应用模组选择")}
-        </button>
-        <button type="button" class="secondary" on:click={restoreDefaultMods} disabled={$loadProgress !== null}>
-          {t("恢复默认全选")}
-        </button>
+        <button type="button" on:click={selectAllMods} disabled={$loadProgress !== null}>全选</button>
+        <button type="button" on:click={selectNoMods} disabled={$loadProgress !== null}>全不选</button>
+        <button type="button" on:click={applyModSelection} disabled={$loadProgress !== null}>应用选择</button>
+        <button type="button" on:click={restoreDefaultMods} disabled={$loadProgress !== null}>恢复默认</button>
       </div>
     </details>
   {/if}
@@ -469,40 +433,11 @@ newRandomPage();
 <style>
 main {
   text-align: left;
-  padding: 1em;
-  max-width: 1120px;
+  padding: 1.5em 1em 3em;
+  max-width: 980px;
   margin: 0 auto;
-  margin-top: 4.5rem;
+  margin-top: 4rem;
 }
-
-main > img {
-  border: 1px solid var(--cata-color-dark-gray);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.025);
-  padding: 0.6rem;
-}
-
-main > ul {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 0.75rem;
-  padding: 0;
-  list-style: none;
-}
-
-main > ul li {
-  margin: 0;
-  border: 1px solid var(--cata-color-dark-gray);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.025);
-  padding: 0.72rem 0.85rem;
-}
-
-main > ul li:hover {
-  border-color: var(--cata-color-light-green);
-  background: rgba(95, 210, 120, 0.07);
-}
-
 header {
   position: fixed;
   top: 0;
@@ -511,15 +446,13 @@ header {
   box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.5);
   width: 100%;
   height: 4rem;
-  background: rgba(22, 24, 23, 0.97);
-  border-bottom: 1px solid rgba(95, 210, 120, 0.26);
-  backdrop-filter: blur(10px);
+  background: rgba(33, 33, 33, 0.98);
   padding: 0 calc(1em + 8px);
   box-sizing: border-box;
 }
 
 nav {
-  max-width: 1120px;
+  max-width: 980px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -529,6 +462,7 @@ nav {
 
 nav > .search {
   flex: 1;
+  margin: 0;
   max-width: calc(0.5 * 980px);
 }
 
@@ -538,12 +472,6 @@ nav > .title .narrow {
 
 nav > .title {
   margin-right: 1em;
-  letter-spacing: 0.04em;
-}
-
-nav > .title a {
-  color: var(--cata-color-light-green);
-  text-decoration: none;
 }
 
 @media (max-width: 600px) {
@@ -559,19 +487,39 @@ nav > .title a {
   }
 }
 
+.dont-panic {
+  float: right;
+  margin: 0 0 1rem 2rem;
+}
+
+.guide-quote {
+  color: var(--cata-color-light-gray);
+  font-style: italic;
+}
+
+.catalog-list {
+  line-height: 1.55;
+}
+
+@media (max-width: 700px) {
+  .dont-panic {
+    float: none;
+    display: block;
+    width: min(100%, 343px);
+    height: auto;
+    margin: 0 auto 1rem;
+  }
+}
+
 .mod-options {
   margin-top: 2rem;
-  border: 1px solid var(--cata-color-dark-gray);
-  border-radius: 14px;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.022);
+  border-top: 1px solid var(--cata-color-dark-gray);
+  padding-top: 1rem;
 }
 
 .mod-options > summary {
   cursor: pointer;
   font-weight: bold;
-  color: var(--cata-color-light-green);
-  font-size: 1.05rem;
 }
 
 .mod-note {
@@ -590,13 +538,7 @@ nav > .title a {
   gap: 0.5rem;
   align-items: flex-start;
   border: 1px solid var(--cata-color-dark-gray);
-  border-radius: 10px;
-  padding: 0.65rem;
-  background: rgba(0, 0, 0, 0.14);
-}
-
-.mod-grid label:hover {
-  border-color: rgba(95, 210, 120, 0.55);
+  padding: 0.6rem;
 }
 
 .mod-grid label > span {
@@ -615,28 +557,7 @@ nav > .title a {
 .mod-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
-}
-
-.mod-actions button {
-  border-radius: 8px;
-  padding: 0.45rem 0.8rem;
-  cursor: pointer;
-}
-
-.mod-actions button.primary {
-  border-color: var(--cata-color-light-green);
-  background: rgba(95, 210, 120, 0.16);
-  color: var(--cata-color-light-green);
-}
-
-.mod-actions button.secondary {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.mod-actions button:disabled {
-  cursor: wait;
-  opacity: 0.55;
+  gap: 0.75rem;
 }
 
 .load-error {

@@ -3,11 +3,19 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { svelteTesting } from "@testing-library/svelte/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import EnvironmentPlugin from "vite-plugin-environment";
+import { fileURLToPath, URL } from "node:url";
 
 const base = process.env.BREEZE_GUIDE_BASE || "/";
 
 export default defineConfig({
   base,
+  resolve: {
+    alias: {
+      "@transifex/native": fileURLToPath(
+        new URL("./src/界面翻译.ts", import.meta.url),
+      ),
+    },
+  },
   build: {
     sourcemap: true,
   },
@@ -22,7 +30,6 @@ export default defineConfig({
     svelte(),
     svelteTesting(),
     VitePWA({
-      registerType: "autoUpdate",
       devOptions: {
         enabled: true,
       },
@@ -51,8 +58,6 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "index.html",
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
         runtimeCaching: [
           {
             urlPattern: /\/data\/(本体|模组)\/.*\.json(\?.*)?$/,

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "../界面翻译";
+import { t } from "@transifex/native";
 import type { CddaData } from "src/data";
 import type { ActivityDataCommon } from "src/types";
 import { getContext } from "svelte";
