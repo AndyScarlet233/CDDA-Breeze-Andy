@@ -2532,11 +2532,21 @@ void inventory_selector::refresh_window()
     wnoutrefresh( w_inv );
 }
 
-std::pair< bool, std::string > inventory_selector::query_string( const std::string &val )
+std::pair< bool, std::string > inventory_selector::query_string( const std::string &val,
+        bool end_with_toggle )
 {
     spopup = std::make_unique<string_input_popup>();
     spopup->max_length( 256 )
     .text( val );
+    if( end_with_toggle ) {
+        for( input_event const &event :
+             inp_mngr.get_input_for_action( "TOGGLE_ENTRY", "INVENTORY" ) ) {
+            spopup->add_callback( event.get_first_input(), [this]() {
+                spopup->confirm();
+                return true;
+            } );
+        }
+    }
 
     shared_ptr_fast<ui_adaptor> current_ui = ui.lock();
     if( current_ui ) {
@@ -2566,9 +2576,10 @@ void inventory_selector::query_set_filter()
     }
 }
 
-int inventory_selector::query_count()
+int inventory_selector::query_count( char init, bool end_with_toggle )
 {
-    std::pair< bool, std::string > query = query_string( "" );
+    const std::string initial_value = init != 0 ? std::string( 1, init ) : std::string();
+    std::pair< bool, std::string > query = query_string( initial_value, end_with_toggle );
     int ret = -1;
     if( query.first ) {
         try {
@@ -3974,11 +3985,18 @@ void trade_selector::execute()
             _parent->autobalance();
         } else {
             input_event const iev = _ctxt_trade.get_raw_input();
-            inventory_input const input =
-                process_input( ctxt.input_to_action( iev ), iev.get_first_input() );
-            inventory_drop_selector::on_input( input );
-            if( input.action == "HELP_KEYBINDINGS" ) {
-                ctxt.display_menu();
+            const int ch = iev.get_first_input();
+            if( ctxt.keys_bound_to( "MARK_WITH_COUNT" ).empty() && ch >= '0' && ch <= '9' ) {
+                int query_result = query_count( static_cast<char>( ch ), true );
+                if( query_result >= 0 ) {
+                    toggle_entries( query_result, toggle_mode::SELECTED );
+                }
+            } else {
+                inventory_input const input = process_input( ctxt.input_to_action( iev ), ch );
+                inventory_drop_selector::on_input( input );
+                if( input.action == "HELP_KEYBINDINGS" ) {
+                    ctxt.display_menu();
+                }
             }
         }
     }
