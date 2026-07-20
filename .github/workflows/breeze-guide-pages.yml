@@ -1,0 +1,73 @@
+name: 构建并发布微风指南
+
+on:
+  push:
+    branches: [ test/next-release ]
+    paths:
+      - "breeze_guide/**"
+      - "data/json/**"
+      - "data/mods/**"
+      - "lang/po/zh_CN.po"
+      - "src/version.h"
+      - ".github/workflows/breeze-guide-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: breeze-guide-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: breeze_guide
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: yarn
+          cache-dependency-path: breeze_guide/yarn.lock
+
+      - name: 安装网页依赖
+        run: yarn install --frozen-lockfile
+
+      - name: 生成本体与已批准模组数据
+        run: yarn guide:data
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: 检查网页源码
+        run: yarn validate
+
+      - name: 构建 GitHub Pages
+        run: yarn build:pages
+        env:
+          BREEZE_GUIDE_BASE: /CDDA-Breeze-Andy/
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: 配置 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传网页产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: breeze_guide/dist
+
+      - name: 发布 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

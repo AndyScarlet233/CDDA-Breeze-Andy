@@ -9,14 +9,16 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "merge-data": "node merge-json.mjs && node convert-po.mjs",
+    "merge-data": "node 生成指南数据.mjs && node convert-po.mjs",
     "convert-po": "node convert-po.mjs",
     "validate": "svelte-check && tsc --noEmit",
     "lint": "prettier -c .",
     "lint:fix": "prettier -w .",
     "cap:sync": "capacitor sync android",
     "cap:build:debug": "npm run build && capacitor sync android && cd android && gradlew.bat :app:assembleDebug",
-    "cap:build:release": "npm run build && capacitor sync android && cd android && gradlew.bat :app:assembleRelease"
+    "cap:build:release": "npm run build && capacitor sync android && cd android && gradlew.bat :app:assembleRelease",
+    "guide:data": "node 生成指南数据.mjs && node convert-po.mjs",
+    "build:pages": "vite build && node 生成GitHubPages回退页.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^8.4.0",

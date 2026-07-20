@@ -260,9 +260,24 @@ export function asKilograms(string: string | number): string {
   return `${(g / 1000).toFixed(2)} kg`;
 }
 
+function dataIdentityKey(obj: any, mappedType: string): string | null {
+  if (typeof obj?.id === "string") return `${mappedType}:id:${obj.id}`;
+  if (Array.isArray(obj?.id) && obj.id.length === 1)
+    return `${mappedType}:id:${obj.id[0]}`;
+  if ((mappedType === "recipe" || mappedType === "uncraft") && obj?.result) {
+    return `${mappedType}:result:${obj.result}:${obj.variant ?? ""}:${obj.id_suffix ?? ""}`;
+  }
+  if (mappedType === "monstergroup" && obj?.name)
+    return `${mappedType}:name:${obj.name}`;
+  if (typeof obj?.abstract === "string")
+    return `${mappedType}:abstract:${obj.abstract}`;
+  return null;
+}
+
 export class CddaData {
   _raw: any[];
   _byType: Map<string, any[]> = new Map();
+  _byTypeIndexByKey: Map<string, Map<string, number>> = new Map();
   _byTypeById: Map<string, Map<string, any>> = new Map();
   _abstractsByType: Map<string, Map<string, any>> = new Map();
   _toolReplacements: Map<string, string[]> | null = null;
@@ -277,8 +292,8 @@ export class CddaData {
   constructor(raw: any[], build_number?: string, release?: any) {
     this.release = release;
     this.build_number = build_number;
-    // For some reason O—G has the string "mapgen" as one of its objects.
-    this._raw = raw.filter((x) => typeof x === "object");
+    // 模组可能覆盖本体对象。_raw 在建立完索引后只保留最终可见版本。
+    this._raw = [];
     for (const obj of raw) {
       if (!Object.hasOwnProperty.call(obj, "type")) continue;
       if (obj.type === "MIGRATION") {
@@ -290,22 +305,44 @@ export class CddaData {
       }
       const mappedType = mapType(obj.type);
       if (!this._byType.has(mappedType)) this._byType.set(mappedType, []);
-      this._byType.get(mappedType)!.push(obj);
+      if (!this._byTypeIndexByKey.has(mappedType))
+        this._byTypeIndexByKey.set(mappedType, new Map());
+
+      const identityKey = dataIdentityKey(obj, mappedType);
+      const visible = this._byType.get(mappedType)!;
+      const visibleIndex = identityKey
+        ? this._byTypeIndexByKey.get(mappedType)!.get(identityKey)
+        : undefined;
+      if (visibleIndex === undefined) {
+        visible.push(obj);
+        if (identityKey)
+          this._byTypeIndexByKey.get(mappedType)!.set(identityKey, visible.length - 1);
+      } else {
+        visible[visibleIndex] = obj;
+      }
+
       if (Object.hasOwnProperty.call(obj, "id")) {
         if (!this._byTypeById.has(mappedType))
           this._byTypeById.set(mappedType, new Map());
-        if (typeof obj.id === "string")
-          this._byTypeById.get(mappedType)!.set(obj.id, obj);
+        const byId = this._byTypeById.get(mappedType)!;
+        if (
+          typeof obj.id === "string" &&
+          obj["copy-from"] === obj.id &&
+          byId.has(obj.id)
+        ) {
+          Object.defineProperty(obj, "__copy_from_previous", {
+            value: byId.get(obj.id),
+            enumerable: false,
+          });
+        }
+        if (typeof obj.id === "string") byId.set(obj.id, obj);
         else if (Array.isArray(obj.id))
-          for (const id of obj.id)
-            this._byTypeById.get(mappedType)!.set(id, obj);
+          for (const id of obj.id) byId.set(id, obj);
 
         // TODO: proper alias handling. We want to e.g. be able to collapse them in loot tables.
         if (Array.isArray(obj.alias))
-          for (const id of obj.alias)
-            this._byTypeById.get(mappedType)!.set(id, obj);
-        else if (typeof obj.alias === "string")
-          this._byTypeById.get(mappedType)!.set(obj.alias, obj);
+          for (const id of obj.alias) byId.set(id, obj);
+        else if (typeof obj.alias === "string") byId.set(obj.alias, obj);
       }
       // recipes are id'd by their result
       if (
@@ -345,6 +382,7 @@ export class CddaData {
         this._nestedMapgensById.get(obj.nested_mapgen_id)!.push(obj);
       }
     }
+    this._raw = [...this._byType.values()].flat();
     this._byTypeById
       .get("item_group")
       ?.set("EMPTY_GROUP", { id: "EMPTY_GROUP", entries: [] });
@@ -421,10 +459,11 @@ export class CddaData {
     const obj: any = _obj;
     if (this._flattenCache.has(obj)) return this._flattenCache.get(obj);
     const parent =
-      "copy-from" in obj
+      obj.__copy_from_previous ??
+      ("copy-from" in obj
         ? (this._byTypeById.get(mapType(obj.type))?.get(obj["copy-from"]) ??
           this._abstractsByType.get(mapType(obj.type))?.get(obj["copy-from"]))
-        : null;
+        : null);
     if ("copy-from" in obj && !parent)
       console.error(
         `Missing parent in ${
@@ -1926,53 +1965,174 @@ const loadProgressStore = writable<[number, number] | null>(null);
 export const loadProgress = { subscribe: loadProgressStore.subscribe };
 const { subscribe, set } = writable<CddaData | null>(null);
 
+export interface GuideModEntry {
+  id: string;
+  name: string;
+  description: string;
+  authors: string[];
+  maintainers: string[];
+  version: string;
+  category: string;
+  dependencies: string[];
+  dataPath: string;
+  objectCount: number;
+  hash: string;
+  defaultEnabled: boolean;
+  required: boolean;
+  sourceType: string;
+  sourcePath: string;
+}
+
+export const modCatalog = writable<GuideModEntry[]>([]);
+export const enabledModIds = writable<string[]>([]);
+export const dataLoadError = writable<string | null>(null);
+
 /** Forces re-render after translations load asynchronously */
 export const localeVersion = writable(0);
 
+let loadGeneration = 0;
+
+function guideAsset(pathname: string): string {
+  return `${import.meta.env.BASE_URL}${pathname.replace(/^\/+/, "")}`;
+}
+
+function normalizeModEntry(raw: any): GuideModEntry {
+  return {
+    id: String(raw["标识"] ?? ""),
+    name: String(raw["名称"] ?? raw["标识"] ?? ""),
+    description: String(raw["说明"] ?? ""),
+    authors: Array.isArray(raw["作者"]) ? raw["作者"].map(String) : [],
+    maintainers: Array.isArray(raw["维护者"])
+      ? raw["维护者"].map(String)
+      : [],
+    version: String(raw["版本"] ?? ""),
+    category: String(raw["分类"] ?? ""),
+    dependencies: Array.isArray(raw["依赖"])
+      ? raw["依赖"].map(String)
+      : [],
+    dataPath: String(raw["数据路径"] ?? ""),
+    objectCount: Number(raw["对象数量"] ?? 0),
+    hash: String(raw["哈希"] ?? ""),
+    defaultEnabled: raw["默认启用"] === true,
+    required: raw["必需启用"] === true,
+    sourceType: String(raw["来源类型"] ?? ""),
+    sourcePath: String(raw["来源路径"] ?? ""),
+  };
+}
+
+function resolveModIds(catalog: GuideModEntry[], requested: string[]): string[] {
+  const byId = new Map(catalog.map((entry) => [entry.id, entry]));
+  const selected = new Set(
+    catalog.filter((entry) => entry.required).map((entry) => entry.id),
+  );
+  for (const id of requested) if (byId.has(id)) selected.add(id);
+
+  const visit = (id: string, visiting = new Set<string>()) => {
+    const entry = byId.get(id);
+    if (!entry || visiting.has(id)) return;
+    visiting.add(id);
+    for (const dependency of entry.dependencies) {
+      if (!byId.has(dependency)) continue;
+      selected.add(dependency);
+      visit(dependency, visiting);
+    }
+    visiting.delete(id);
+  };
+  for (const id of [...selected]) visit(id);
+  return catalog.filter((entry) => selected.has(entry.id)).map((entry) => entry.id);
+}
+
 export const data = {
   subscribe,
-  async load() {
+  async load(requestedModIds?: string[]) {
+    const generation = ++loadGeneration;
     loadProgressStore.set([0, 1]);
+    dataLoadError.set(null);
     try {
-      // First fetch all.json to get data + version
-      const dataRes = await fetch("/data/all.json");
-      if (!dataRes.ok)
-        throw new Error(`Error ${dataRes.status} fetching data/all.json`);
-      const dataJson = await dataRes.json();
-      const cddaData = new CddaData(
-        dataJson.data,
-        dataJson.build_number,
-        dataJson.release,
+      const modIndexRes = await fetch(guideAsset("data/模组索引.json"));
+      if (!modIndexRes.ok)
+        throw new Error(`读取模组索引失败：HTTP ${modIndexRes.status}`);
+      const modIndexJson = await modIndexRes.json();
+      const dataVersion = encodeURIComponent(
+        String(modIndexJson["生成时间"] ?? modIndexJson["源码引用"] ?? "1"),
       );
+      const coreRes = await fetch(
+        guideAsset(`data/本体/all.json?v=${dataVersion}`),
+      );
+      if (!coreRes.ok)
+        throw new Error(`读取本体数据失败：HTTP ${coreRes.status}`);
+      const coreJson = await coreRes.json();
+      const catalog = (modIndexJson["模组"] ?? []).map(normalizeModEntry);
+      const initialRequest =
+        requestedModIds ??
+        catalog.filter((entry) => entry.defaultEnabled).map((entry) => entry.id);
+      const selectedIds = resolveModIds(catalog, initialRequest);
+      const selectedSet = new Set(selectedIds);
+      const selectedEntries = catalog.filter((entry) => selectedSet.has(entry.id));
 
-      // Set data immediately so the page renders (even without translations)
+      const modPayloads = await Promise.all(
+        selectedEntries.map(async (entry) => {
+          const suffix = entry.hash ? `?v=${encodeURIComponent(entry.hash)}` : "";
+          const response = await fetch(
+            guideAsset(`data/${entry.dataPath}${suffix}`),
+          );
+          if (!response.ok)
+            throw new Error(
+              `读取模组“${entry.name}”失败：HTTP ${response.status}`,
+            );
+          return response.json();
+        }),
+      );
+      if (generation !== loadGeneration) return;
+
+      const mergedRecords = [
+        ...(coreJson.data ?? []),
+        ...modPayloads.flatMap((payload) => payload.data ?? []),
+      ];
+      const buildLabel = selectedEntries.length
+        ? `${coreJson.build_number} ＋ ${selectedEntries.length} 个模组`
+        : coreJson.build_number;
+      const cddaData = new CddaData(mergedRecords, buildLabel, {
+        ...coreJson.release,
+        guide_mods: selectedIds,
+      });
+
+      modCatalog.set(catalog);
+      enabledModIds.set(selectedIds);
       set(cddaData);
       loadProgressStore.set(null);
 
-      // Then fetch translations asynchronously in background
       try {
         const localeRes = await fetch(
-          `/data/zh_CN.json?v=${encodeURIComponent(dataJson.build_number ?? "1")}`,
+          guideAsset(
+            `data/zh_CN.json?v=${dataVersion}`,
+          ),
         );
         if (localeRes.ok) {
           const localeJson = await localeRes.json();
+          i18n = makeI18n();
           i18n.loadJSON(localeJson);
           i18n.setLocale("zh_CN");
-          // Force all {#key $localeVersion} blocks to re-render with Chinese text
           localeVersion.update((n) => n + 1);
           console.log(
             `[i18n] loaded ${Object.keys(localeJson).length} translations, locale=${i18n.getLocale()}`,
           );
         } else {
           console.warn(
-            `[i18n] zh_CN.json returned ${localeRes.status}, showing English`,
+            `[i18n] zh_CN.json returned ${localeRes.status}, showing source text`,
           );
         }
       } catch (localeErr) {
-        console.error("[i18n] Failed to load translations, showing English:", localeErr);
+        console.error(
+          "[i18n] Failed to load translations, showing source text:",
+          localeErr,
+        );
       }
-    } catch (e) {
-      console.error("Failed to load data:", e);
+    } catch (error) {
+      if (generation !== loadGeneration) return;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Failed to load guide data:", error);
+      dataLoadError.set(message);
       loadProgressStore.set(null);
     }
   },
