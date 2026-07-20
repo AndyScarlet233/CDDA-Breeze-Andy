@@ -3070,7 +3070,7 @@ class Character : public Creature, public visitable
 
         // ---- CRAFTING ----
         void make_craft_with_command( const recipe_id &id_to_make, int batch_size, bool is_long,
-                                      const std::optional<tripoint> &loc );
+                                      const std::optional<tripoint> &loc, bool queued = false );
         pimpl<craft_command> last_craft;
 
         recipe_id lastrecipe;
@@ -3166,8 +3166,12 @@ class Character : public Creature, public visitable
                          const std::optional<tripoint> &loc = std::nullopt );
         void make_all_craft( const recipe_id &id, int batch_size,
                              const std::optional<tripoint> &loc );
+        /** Add a recipe to an NPC manufacturing queue without closing the crafting menu. */
+        bool queue_craft( const recipe_id &id, int batch_size,
+                          const std::optional<tripoint> &loc );
         /** consume components and create an active, in progress craft containing them */
-        void start_craft( craft_command &command, const std::optional<tripoint> &loc );
+        void start_craft( craft_command &command, const std::optional<tripoint> &loc,
+                          bool queued = false );
         /**
          * Calculate a value representing the success of the player at crafting the given recipe,
          * taking player skill, recipe difficulty, npc helpers, and player mutations into account.

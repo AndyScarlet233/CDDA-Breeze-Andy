@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iosfwd>
 #include <list>
+#include <limits>
 #include <memory>
 #include <set>
 #include <string>
@@ -151,6 +152,7 @@ static bool craft_is_assigned_to( const item &craft, const npc &who )
 
 static item_location item_to_craft_at( npc &who, const tripoint_bub_ms &where )
 {
+    static const std::string queue_order_var( "craft_queue_order" );
     map &here = get_map();
 
     // NPCs use a wielded in-progress craft when automatic selection falls
@@ -162,12 +164,46 @@ static item_location item_to_craft_at( npc &who, const tripoint_bub_ms &where )
         }
     }
 
+    item_location best;
+    int best_order = std::numeric_limits<int>::max();
+
+    const auto consider = [&]( item & candidate, const item_location & location ) {
+        if( !craft_is_assigned_to( candidate, who ) ) {
+            return;
+        }
+        const int order = candidate.get_var( queue_order_var, 0 );
+        if( order > 0 && order < best_order ) {
+            best_order = order;
+            best = location;
+        }
+    };
+
+    // Queue entries normally share one workbench tile.  A radius of two also catches the map
+    // overflow behavior without turning each activity tick into a large inventory search.
+    for( const tripoint_bub_ms &pt : here.points_in_radius( where, 2 ) ) {
+        for( item &candidate : here.i_at( pt ) ) {
+            consider( candidate, item_location( map_cursor( pt.raw() ), &candidate ) );
+        }
+        if( const optional_vpart_position vp = here.veh_at( pt ) ) {
+            const int cargo_part = vp->vehicle().part_with_feature( vp->part_index(), "CARGO", false );
+            if( cargo_part >= 0 ) {
+                for( item &candidate : vp->vehicle().get_items( cargo_part ) ) {
+                    consider( candidate, item_location( vehicle_cursor( vp->vehicle(), cargo_part ),
+                                                        &candidate ) );
+                }
+            }
+        }
+    }
+    if( best ) {
+        return best;
+    }
+
+    // Compatibility with semi-finished crafts assigned by the older dialogue workflow.
     for( item &candidate : here.i_at( where ) ) {
         if( craft_is_assigned_to( candidate, who ) ) {
             return item_location( map_cursor( where.raw() ), &candidate );
         }
     }
-
     if( const optional_vpart_position vp = here.veh_at( where ) ) {
         const int cargo_part = vp->vehicle().part_with_feature( vp->part_index(), "CARGO", false );
         if( cargo_part >= 0 ) {
