@@ -1,6 +1,16 @@
 <script lang="ts">
 import Thing from "./Thing.svelte";
-import { CddaData, data, loadProgress, localeVersion, mapType, singularName } from "./data";
+import {
+  CddaData,
+  data,
+  loadProgress,
+  localeVersion,
+  mapType,
+  singularName,
+  modCatalog,
+  enabledModIds,
+  dataLoadError,
+} from "./data";
 import SearchResults from "./SearchResults.svelte";
 import Catalog from "./Catalog.svelte";
 import dontPanic from "./assets/dont_panic.png";
@@ -30,7 +40,60 @@ $: if (search !== renderedSearch) {
 
 onDestroy(updateRenderedSearch.cancel);
 
-data.load();
+function readSavedModIds(): string[] | undefined {
+  try {
+    const saved = localStorage.getItem("breeze-guide-enabled-mods");
+    if (saved === null) return undefined;
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed.map(String) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const savedModIds = readSavedModIds();
+let pendingModIds = savedModIds ?? [];
+let modSelectionInitialized = false;
+
+data.load(savedModIds);
+
+$: if (!modSelectionInitialized && $modCatalog.length) {
+  pendingModIds = [...$enabledModIds];
+  modSelectionInitialized = true;
+}
+
+function isPendingMod(id: string): boolean {
+  return pendingModIds.includes(id);
+}
+
+function setPendingMod(id: string, checked: boolean) {
+  pendingModIds = checked
+    ? [...new Set([...pendingModIds, id])]
+    : pendingModIds.filter((candidate) => candidate !== id);
+}
+
+async function applyModSelection() {
+  try {
+    localStorage.setItem(
+      "breeze-guide-enabled-mods",
+      JSON.stringify(pendingModIds),
+    );
+  } catch {
+    // 隐私模式可能禁用本地存储，不影响当前会话使用。
+  }
+  await data.load(pendingModIds);
+  pendingModIds = [...$enabledModIds];
+}
+
+async function restoreDefaultMods() {
+  try {
+    localStorage.removeItem("breeze-guide-enabled-mods");
+  } catch {
+    // 同上。
+  }
+  await data.load(undefined);
+  pendingModIds = [...$enabledModIds];
+}
 
 function decodeQueryParam(p: string) {
   return decodeURIComponent(p.replace(/\+/g, " "));
@@ -199,10 +262,19 @@ newRandomPage();
   </nav>
 </header>
 <main>
+  {#if $dataLoadError}
+    <section class="load-error">
+      <h2>{t("指南数据加载失败")}</h2>
+      <p>{$dataLoadError}</p>
+      <button type="button" on:click={() => data.load(pendingModIds)}>
+        {t("重新加载")}
+      </button>
+    </section>
+  {/if}
   {#key $localeVersion}
   {#if item}
     {#if $data}
-      {#key item}
+      {#key `${item.type}/${item.id}/${$data.build_number}`}
         {#if item.id}
           <Thing {item} data={$data} />
         {:else}
@@ -212,7 +284,7 @@ newRandomPage();
     {:else}
       <span style="color: var(--cata-color-gray)">
         <em>{t("加载中...")}</em>
-        {#if $loadProgress}
+        {#if $loadProgress && $loadProgress[1] > 1024}
           ({($loadProgress[0] / 1024 / 1024).toFixed(1)}/{(
             $loadProgress[1] /
             1024 /
@@ -223,13 +295,13 @@ newRandomPage();
     {/if}
   {:else if search}
     {#if $data}
-      {#key renderedSearch}
+      {#key `${renderedSearch}/${$data.build_number}`}
         <SearchResults data={$data} search={renderedSearch} />
       {/key}
     {:else}
       <span style="color: var(--cata-color-gray)">
         <em>{t("加载中...")}</em>
-        {#if $loadProgress}
+        {#if $loadProgress && $loadProgress[1] > 1024}
           ({($loadProgress[0] / 1024 / 1024).toFixed(1)}/{(
             $loadProgress[1] /
             1024 /
@@ -298,20 +370,20 @@ newRandomPage();
 
     <h2>{t("目录")}</h2>
     <ul>
-      <li><a href="/item{location.search}">{t("物品")}</a></li>
-      <li><a href="/monster{location.search}">{t("怪物")}</a></li>
-      <li><a href="/furniture{location.search}">{t("家具")}</a></li>
-      <li><a href="/terrain{location.search}">{t("地形")}</a></li>
-      <li><a href="/vehicle_part{location.search}">{t("车辆部件")}</a></li>
-      <li><a href="/tool_quality{location.search}">{t("工具质量")}</a></li>
-      <li><a href="/mutation{location.search}">{t("变异")}</a></li>
-      <li><a href="/martial_art{location.search}">{t("武术")}</a></li>
-      <li><a href="/json_flag{location.search}">{t("标志")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}item{location.search}">{t("物品")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}monster{location.search}">{t("怪物")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}furniture{location.search}">{t("家具")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}terrain{location.search}">{t("地形")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}vehicle_part{location.search}">{t("车辆部件")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}tool_quality{location.search}">{t("工具质量")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}mutation{location.search}">{t("变异")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}martial_art{location.search}">{t("武术")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}json_flag{location.search}">{t("标志")}</a></li>
       <li>
-        <a href="/achievement{location.search}">{t("成就")}</a> /
-        <a href="/conduct{location.search}">{t("行为")}</a>
+        <a href="{import.meta.env.BASE_URL}achievement{location.search}">{t("成就")}</a> /
+        <a href="{import.meta.env.BASE_URL}conduct{location.search}">{t("行为")}</a>
       </li>
-      <li><a href="/proficiency{location.search}">{t("专精")}</a></li>
+      <li><a href="{import.meta.env.BASE_URL}proficiency{location.search}">{t("专精")}</a></li>
     </ul>
 
     <InterpolatedTranslation
@@ -322,6 +394,47 @@ newRandomPage();
       <a slot="0" href={randomPage} on:click={() => setTimeout(newRandomPage)}
         >{t("随机页面")}</a>
     </InterpolatedTranslation>
+  {/if}
+
+  {#if $modCatalog.length}
+    <details class="mod-options">
+      <summary>
+        {t("模组数据")}（{$enabledModIds.length}/{$modCatalog.length}）
+      </summary>
+      <p class="mod-note">
+        {t("这里只显示维护者已经审核并发布的模组数据。玩家可以选择检索范围，但不能从网页上传模组。")}
+      </p>
+      <div class="mod-grid">
+        {#each $modCatalog as mod (mod.id)}
+          <label class:required-mod={mod.required} title={mod.description || mod.id}>
+            <input
+              type="checkbox"
+              checked={mod.required || isPendingMod(mod.id)}
+              disabled={mod.required}
+              on:change={(event) =>
+                setPendingMod(
+                  mod.id,
+                  (event.currentTarget as HTMLInputElement).checked,
+                )} />
+            <span>
+              <strong>{mod.name}</strong>
+              <small>
+                {mod.id}，{mod.objectCount.toLocaleString()} {t("个对象")}
+                {#if mod.required}，{t("必需")}{/if}
+              </small>
+            </span>
+          </label>
+        {/each}
+      </div>
+      <div class="mod-actions">
+        <button type="button" on:click={applyModSelection} disabled={$loadProgress !== null}>
+          {t("应用模组选择")}
+        </button>
+        <button type="button" on:click={restoreDefaultMods} disabled={$loadProgress !== null}>
+          {t("恢复默认")}
+        </button>
+      </div>
+    </details>
   {/if}
 
   <p class="data-options">
@@ -389,6 +502,61 @@ nav > .title {
   nav > .search {
     flex: 1;
   }
+}
+
+.mod-options {
+  margin-top: 2rem;
+  border-top: 1px solid var(--cata-color-dark-gray);
+  padding-top: 1rem;
+}
+
+.mod-options > summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.mod-note {
+  color: var(--cata-color-light-gray);
+}
+
+.mod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 1rem 0;
+}
+
+.mod-grid label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  border: 1px solid var(--cata-color-dark-gray);
+  padding: 0.6rem;
+}
+
+.mod-grid label > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.mod-grid small {
+  color: var(--cata-color-gray);
+}
+
+.required-mod {
+  opacity: 0.8;
+}
+
+.mod-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.load-error {
+  border: 1px solid var(--cata-color-light-red);
+  padding: 1rem;
+  margin-bottom: 1rem;
 }
 
 .data-options select {

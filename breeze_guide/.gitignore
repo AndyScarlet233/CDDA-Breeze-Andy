@@ -1,0 +1,4 @@
+node_modules/
+dist/
+public/data/
+.模组展开缓存/
