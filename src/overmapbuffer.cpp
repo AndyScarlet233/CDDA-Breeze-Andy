@@ -49,6 +49,22 @@ static const oter_type_str_id oter_type_bridgehead_ground( "bridgehead_ground" )
 static const oter_type_str_id oter_type_bridgehead_ramp( "bridgehead_ramp" );
 static const oter_type_str_id oter_type_deep_rock( "deep_rock" );
 static const oter_type_str_id oter_type_empty_rock( "empty_rock" );
+static const oter_type_str_id oter_type_evac_center_1( "evac_center_1" );
+static const oter_type_str_id oter_type_evac_center_2( "evac_center_2" );
+static const oter_type_str_id oter_type_evac_center_3( "evac_center_3" );
+static const oter_type_str_id oter_type_evac_center_4( "evac_center_4" );
+static const oter_type_str_id oter_type_evac_center_5( "evac_center_5" );
+static const oter_type_str_id oter_type_evac_center_6( "evac_center_6" );
+static const oter_type_str_id oter_type_evac_center_10( "evac_center_10" );
+static const oter_type_str_id oter_type_evac_center_11( "evac_center_11" );
+static const oter_type_str_id oter_type_evac_center_15( "evac_center_15" );
+static const oter_type_str_id oter_type_evac_center_16( "evac_center_16" );
+static const oter_type_str_id oter_type_evac_center_20( "evac_center_20" );
+static const oter_type_str_id oter_type_evac_center_21( "evac_center_21" );
+static const oter_type_str_id oter_type_evac_center_22( "evac_center_22" );
+static const oter_type_str_id oter_type_evac_center_23( "evac_center_23" );
+static const oter_type_str_id oter_type_evac_center_24( "evac_center_24" );
+static const oter_type_str_id oter_type_evac_center_25( "evac_center_25" );
 static const oter_type_str_id oter_type_field( "field" );
 static const oter_type_str_id oter_type_forest( "forest" );
 static const oter_type_str_id oter_type_forest_trail( "forest_trail" );
@@ -58,6 +74,13 @@ static const oter_type_str_id oter_type_lake_surface( "lake_surface" );
 static const oter_type_str_id oter_type_microlab_rock_border( "microlab_rock_border" );
 static const oter_type_str_id oter_type_open_air( "open_air" );
 static const oter_type_str_id oter_type_river_center( "river_center" );
+static const oter_type_str_id oter_type_refctr_field( "refctr_field" );
+static const oter_type_str_id oter_type_refctr_road( "refctr_road" );
+static const oter_type_str_id oter_type_refctr_s3a( "refctr_S3a" );
+static const oter_type_str_id oter_type_refctr_s3b( "refctr_S3b" );
+static const oter_type_str_id oter_type_refctr_s3c( "refctr_S3c" );
+static const oter_type_str_id oter_type_refctr_s3d( "refctr_S3d" );
+static const oter_type_str_id oter_type_refctr_s3e( "refctr_S3e" );
 static const oter_type_str_id oter_type_road( "road" );
 static const oter_type_str_id oter_type_road_nesw_manhole( "road_nesw_manhole" );
 static const oter_type_str_id oter_type_solid_earth( "solid_earth" );
@@ -915,13 +938,36 @@ static int get_terrain_cost( const tripoint_abs_omt &omt_pos, const overmap_path
         return -1;
     }
     const oter_id &oter = overmap_buffer.ter_existing( omt_pos );
-    if( ( oter->get_type_id() == oter_type_road ) ||
-        ( oter->get_type_id() == oter_type_bridge_road ) ||
-        ( oter->get_type_id() == oter_type_bridgehead_ground ) ||
-        ( oter->get_type_id() == oter_type_bridgehead_ramp ) ||
-        ( oter->get_type_id() == oter_type_road_nesw_manhole ) ) {
+    const oter_type_str_id &oter_type = oter->get_type_id();
+    const bool refugee_center_road = oter_type == oter_type_refctr_road ||
+                                     oter_type == oter_type_refctr_s3a ||
+                                     oter_type == oter_type_refctr_s3b ||
+                                     oter_type == oter_type_refctr_s3c ||
+                                     oter_type == oter_type_refctr_s3d ||
+                                     oter_type == oter_type_refctr_s3e ||
+                                     oter_type == oter_type_evac_center_1 ||
+                                     oter_type == oter_type_evac_center_2 ||
+                                     oter_type == oter_type_evac_center_3 ||
+                                     oter_type == oter_type_evac_center_4 ||
+                                     oter_type == oter_type_evac_center_5 ||
+                                     oter_type == oter_type_evac_center_6 ||
+                                     oter_type == oter_type_evac_center_10 ||
+                                     oter_type == oter_type_evac_center_11 ||
+                                     oter_type == oter_type_evac_center_15 ||
+                                     oter_type == oter_type_evac_center_16 ||
+                                     oter_type == oter_type_evac_center_20 ||
+                                     oter_type == oter_type_evac_center_21 ||
+                                     oter_type == oter_type_evac_center_22 ||
+                                     oter_type == oter_type_evac_center_23 ||
+                                     oter_type == oter_type_evac_center_24 ||
+                                     oter_type == oter_type_evac_center_25;
+    if( ( oter_type == oter_type_road ) || refugee_center_road ||
+        ( oter_type == oter_type_bridge_road ) ||
+        ( oter_type == oter_type_bridgehead_ground ) ||
+        ( oter_type == oter_type_bridgehead_ramp ) ||
+        ( oter_type == oter_type_road_nesw_manhole ) ) {
         return params.road_cost;
-    } else if( oter->get_type_id() == oter_type_field ) {
+    } else if( oter_type == oter_type_field || oter_type == oter_type_refctr_field ) {
         return params.field_cost;
     } else if( is_ot_match( "rural_road", oter, ot_match_type::prefix ) ||
                is_ot_match( "dirt_road", oter, ot_match_type::prefix ) ||
@@ -1448,20 +1494,44 @@ std::vector<radio_tower_reference> overmapbuffer::find_all_radio_stations()
     return result;
 }
 
+std::vector<faction_camp_reference> overmapbuffer::get_faction_camps_near(
+    const tripoint_abs_omt &location, int x_radius, int y_radius )
+{
+    std::vector<faction_camp_reference> result;
+    if( location.z() != 0 ) {
+        return result;
+    }
+
+    result.reserve( 16 );
+    for( int y = -y_radius; y <= y_radius; ++y ) {
+        for( int x = -x_radius; x <= x_radius; ++x ) {
+            const tripoint_abs_omt pos( location.xy() + point( x, y ), location.z() );
+            const oter_id &terrain = ter_existing( pos );
+            if( !terrain ) {
+                continue;
+            }
+            const translation *name = overmap::faction_camp_name( terrain->get_type_id() );
+            if( name != nullptr ) {
+                result.push_back( faction_camp_reference{ pos, name->translated() } );
+            }
+        }
+    }
+    return result;
+}
+
 std::vector<camp_reference> overmapbuffer::get_camps_near( const tripoint_abs_sm &location,
         int radius )
 {
     std::vector<camp_reference> result;
     for( overmap *om : get_overmaps_near( location, radius ) ) {
         result.reserve( result.size() + om->camps.size() );
-        std::transform( om->camps.begin(), om->camps.end(), std::back_inserter( result ),
-        [&]( basecamp & element ) {
-            const tripoint_abs_omt camp_pt = element.camp_omt_pos();
-            const tripoint_abs_sm camp_sm = project_to<coords::sm>( camp_pt );
+        for( basecamp &camp : om->camps ) {
+            const tripoint_abs_sm camp_sm = project_to<coords::sm>( camp.camp_omt_pos() );
             const int distance = rl_dist( camp_sm, location );
-
-            return camp_reference{ &element, camp_sm, distance };
-        } );
+            if( distance <= radius ) {
+                result.push_back( camp_reference{ &camp, camp_sm, distance } );
+            }
+        }
     }
     std::sort( result.begin(), result.end(), []( const camp_reference & lhs,
     const camp_reference & rhs ) {
