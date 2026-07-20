@@ -1,0 +1,92 @@
+name: 构建微风指南安卓安装包
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/next-release
+    paths:
+      - ".github/workflows/breeze-guide-android.yml"
+      - "breeze_guide/**"
+      - "data/json/**"
+      - "data/mods/**"
+      - "lang/po/zh_CN.po"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: breeze-guide-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug-apk:
+    name: 构建可安装调试版 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v5
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: 配置 Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: 安装网页依赖
+        working-directory: breeze_guide
+        run: npx --yes yarn@1.22.22 install --frozen-lockfile
+
+      - name: 生成离线指南数据
+        working-directory: breeze_guide
+        run: npx --yes yarn@1.22.22 guide:data
+
+      - name: 检查网页源码
+        working-directory: breeze_guide
+        run: npx --yes yarn@1.22.22 validate
+
+      - name: 构建安卓网页资源
+        working-directory: breeze_guide
+        env:
+          BREEZE_GUIDE_BASE: "/"
+          GITHUB_SHA: ${{ github.sha }}
+        run: npx --yes yarn@1.22.22 build
+
+      - name: 同步 Capacitor 安卓工程
+        working-directory: breeze_guide
+        run: npx --yes cap sync android
+
+      - name: 构建 APK
+        working-directory: breeze_guide/android
+        env:
+          BREEZE_GUIDE_VERSION_CODE: ${{ github.run_number }}
+          BREEZE_GUIDE_VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+      - name: 整理安装包名称
+        working-directory: breeze_guide/android
+        shell: bash
+        run: |
+          short_sha="${GITHUB_SHA::8}"
+          cp app/build/outputs/apk/debug/app-debug.apk \
+            "漫游指南-Breeze-${short_sha}-debug.apk"
+
+      - name: 上传安卓安装包
+        uses: actions/upload-artifact@v6
+        with:
+          name: 漫游指南-Breeze-Android
+          path: breeze_guide/android/漫游指南-Breeze-*-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
