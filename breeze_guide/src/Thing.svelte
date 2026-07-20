@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "@transifex/native";
+import { t } from "./界面翻译";
 import { setContext } from "svelte";
 import type { Component } from "svelte";
 
@@ -37,6 +37,7 @@ import JsonView from "./JsonView.svelte";
 import OvermapSpecial from "./types/OvermapSpecial.svelte";
 import ItemAction from "./types/ItemAction.svelte";
 import Technique from "./types/Technique.svelte";
+import SourceBadge from "./SourceBadge.svelte";
 
 import Spoiler from "./Spoiler.svelte";
 import { isSpoilerItem } from "./spoilers";
@@ -128,6 +129,7 @@ const display = (obj && displays[obj.type]) ?? Unknown;
     _comment: "Error message when an object is not found in the data",
   })}
 {:else}
+  <div class="thing-source"><SourceBadge item={obj} /></div>
   {#if error}
     <section>
       <h1>{t("Error")}</h1>
@@ -160,3 +162,21 @@ const display = (obj && displays[obj.type]) ?? Unknown;
     <JsonView {obj} buildNumber={data.build_number} />
   </details>
 {/if}
+
+<style>
+.thing-source {
+  float: right;
+  position: relative;
+  z-index: 2;
+  margin: 0.45rem 0 0.75rem 1rem;
+}
+
+@media (max-width: 600px) {
+  .thing-source {
+    float: none;
+    display: flex;
+    justify-content: flex-start;
+    margin: 0 0 0.75rem;
+  }
+}
+</style>

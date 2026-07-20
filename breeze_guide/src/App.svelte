@@ -15,7 +15,7 @@ import SearchResults from "./SearchResults.svelte";
 import Catalog from "./Catalog.svelte";
 import dontPanic from "./assets/dont_panic.png";
 import InterpolatedTranslation from "./InterpolatedTranslation.svelte";
-import { t } from "@transifex/native";
+import { guideTypeName, t } from "./界面翻译";
 import type { SupportedTypeMapped, SupportedTypesWithMapped } from "./types";
 import throttle from "lodash/throttle";
 import debounce from "lodash/debounce";
@@ -40,9 +40,11 @@ $: if (search !== renderedSearch) {
 
 onDestroy(updateRenderedSearch.cancel);
 
+const modSelectionStorageKey = "breeze-guide-enabled-mods-v2";
+
 function readSavedModIds(): string[] | undefined {
   try {
-    const saved = localStorage.getItem("breeze-guide-enabled-mods");
+    const saved = localStorage.getItem(modSelectionStorageKey);
     if (saved === null) return undefined;
     const parsed = JSON.parse(saved);
     return Array.isArray(parsed) ? parsed.map(String) : undefined;
@@ -72,10 +74,20 @@ function setPendingMod(id: string, checked: boolean) {
     : pendingModIds.filter((candidate) => candidate !== id);
 }
 
+function selectAllMods() {
+  pendingModIds = $modCatalog.map((mod) => mod.id);
+}
+
+function selectNoMods() {
+  pendingModIds = $modCatalog
+    .filter((mod) => mod.required)
+    .map((mod) => mod.id);
+}
+
 async function applyModSelection() {
   try {
     localStorage.setItem(
-      "breeze-guide-enabled-mods",
+      modSelectionStorageKey,
       JSON.stringify(pendingModIds),
     );
   } catch {
@@ -87,7 +99,7 @@ async function applyModSelection() {
 
 async function restoreDefaultMods() {
   try {
-    localStorage.removeItem("breeze-guide-enabled-mods");
+    localStorage.removeItem(modSelectionStorageKey);
   } catch {
     // 同上。
   }
@@ -124,11 +136,11 @@ $: if (item && item.id && $data && $data.byIdMaybe(item.type as any, item.id)) {
   const it = $data.byId(item.type as any, item.id);
   document.title = `${singularName(
     it,
-  )} - Breeze Guide`;
+  )} - 微风指南`;
 } else if (item && !item.id && item.type) {
-  document.title = `${item.type} - Breeze Guide`;
+  document.title = `${guideTypeName(item.type)} - 微风指南`;
 } else {
-  document.title = "Breeze Guide";
+  document.title = "微风指南";
 }
 
 load();
@@ -245,8 +257,8 @@ newRandomPage();
         <a
           href={import.meta.env.BASE_URL + location.search}
           on:click={() => (search = "")}
-          ><span class="wide">Breeze Guide</span><span
-            class="narrow">BG</span
+          ><span class="wide">微风指南</span><span
+            class="narrow">微</span
           ></a>
       </strong>
     </div>
@@ -332,7 +344,7 @@ newRandomPage();
         slot1="link_flashlight"
         slot2="link_table"
         slot3="link_zombie">
-        <strong slot="0">Breeze Guide</strong>
+        <strong slot="0">微风指南</strong>
         <a
           slot="1"
           href="{import.meta.env.BASE_URL}item/flashlight{location.search}"
@@ -399,10 +411,10 @@ newRandomPage();
   {#if $modCatalog.length}
     <details class="mod-options">
       <summary>
-        {t("模组数据")}（{$enabledModIds.length}/{$modCatalog.length}）
+        {t("模组数据")}（{pendingModIds.length}/{$modCatalog.length}）
       </summary>
       <p class="mod-note">
-        {t("这里只显示维护者已经审核并发布的模组数据。玩家可以选择检索范围，但不能从网页上传模组。")}
+        {t("这里只显示维护者已经审核并发布、且包含可检索内容的模组。首次打开默认全选，玩家只能调整自己的检索范围，不能从网页上传模组。")}
       </p>
       <div class="mod-grid">
         {#each $modCatalog as mod (mod.id)}
@@ -427,11 +439,17 @@ newRandomPage();
         {/each}
       </div>
       <div class="mod-actions">
-        <button type="button" on:click={applyModSelection} disabled={$loadProgress !== null}>
+        <button type="button" class="secondary" on:click={selectAllMods} disabled={$loadProgress !== null}>
+          {t("全选")}
+        </button>
+        <button type="button" class="secondary" on:click={selectNoMods} disabled={$loadProgress !== null}>
+          {t("全不选")}
+        </button>
+        <button type="button" class="primary" on:click={applyModSelection} disabled={$loadProgress !== null}>
           {t("应用模组选择")}
         </button>
-        <button type="button" on:click={restoreDefaultMods} disabled={$loadProgress !== null}>
-          {t("恢复默认")}
+        <button type="button" class="secondary" on:click={restoreDefaultMods} disabled={$loadProgress !== null}>
+          {t("恢复默认全选")}
         </button>
       </div>
     </details>
@@ -452,10 +470,39 @@ newRandomPage();
 main {
   text-align: left;
   padding: 1em;
-  max-width: 980px;
+  max-width: 1120px;
   margin: 0 auto;
-  margin-top: 4rem;
+  margin-top: 4.5rem;
 }
+
+main > img {
+  border: 1px solid var(--cata-color-dark-gray);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 0.6rem;
+}
+
+main > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+main > ul li {
+  margin: 0;
+  border: 1px solid var(--cata-color-dark-gray);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 0.72rem 0.85rem;
+}
+
+main > ul li:hover {
+  border-color: var(--cata-color-light-green);
+  background: rgba(95, 210, 120, 0.07);
+}
+
 header {
   position: fixed;
   top: 0;
@@ -464,13 +511,15 @@ header {
   box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.5);
   width: 100%;
   height: 4rem;
-  background: rgba(33, 33, 33, 0.98);
+  background: rgba(22, 24, 23, 0.97);
+  border-bottom: 1px solid rgba(95, 210, 120, 0.26);
+  backdrop-filter: blur(10px);
   padding: 0 calc(1em + 8px);
   box-sizing: border-box;
 }
 
 nav {
-  max-width: 980px;
+  max-width: 1120px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -489,6 +538,12 @@ nav > .title .narrow {
 
 nav > .title {
   margin-right: 1em;
+  letter-spacing: 0.04em;
+}
+
+nav > .title a {
+  color: var(--cata-color-light-green);
+  text-decoration: none;
 }
 
 @media (max-width: 600px) {
@@ -506,13 +561,17 @@ nav > .title {
 
 .mod-options {
   margin-top: 2rem;
-  border-top: 1px solid var(--cata-color-dark-gray);
-  padding-top: 1rem;
+  border: 1px solid var(--cata-color-dark-gray);
+  border-radius: 14px;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.022);
 }
 
 .mod-options > summary {
   cursor: pointer;
   font-weight: bold;
+  color: var(--cata-color-light-green);
+  font-size: 1.05rem;
 }
 
 .mod-note {
@@ -531,7 +590,13 @@ nav > .title {
   gap: 0.5rem;
   align-items: flex-start;
   border: 1px solid var(--cata-color-dark-gray);
-  padding: 0.6rem;
+  border-radius: 10px;
+  padding: 0.65rem;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.mod-grid label:hover {
+  border-color: rgba(95, 210, 120, 0.55);
 }
 
 .mod-grid label > span {
@@ -550,7 +615,28 @@ nav > .title {
 .mod-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.65rem;
+}
+
+.mod-actions button {
+  border-radius: 8px;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+
+.mod-actions button.primary {
+  border-color: var(--cata-color-light-green);
+  background: rgba(95, 210, 120, 0.16);
+  color: var(--cata-color-light-green);
+}
+
+.mod-actions button.secondary {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mod-actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .load-error {

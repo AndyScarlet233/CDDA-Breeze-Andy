@@ -1996,11 +1996,18 @@ function guideAsset(pathname: string): string {
   return `${import.meta.env.BASE_URL}${pathname.replace(/^\/+/, "")}`;
 }
 
+function cleanGuideText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/<color_[^>]+>/gi, "")
+    .replace(/<\/color>/gi, "")
+    .trim();
+}
+
 function normalizeModEntry(raw: any): GuideModEntry {
   return {
     id: String(raw["标识"] ?? ""),
-    name: String(raw["名称"] ?? raw["标识"] ?? ""),
-    description: String(raw["说明"] ?? ""),
+    name: cleanGuideText(raw["名称"] ?? raw["标识"] ?? ""),
+    description: cleanGuideText(raw["说明"] ?? ""),
     authors: Array.isArray(raw["作者"]) ? raw["作者"].map(String) : [],
     maintainers: Array.isArray(raw["维护者"])
       ? raw["维护者"].map(String)
@@ -2049,7 +2056,9 @@ export const data = {
     loadProgressStore.set([0, 1]);
     dataLoadError.set(null);
     try {
-      const modIndexRes = await fetch(guideAsset("data/模组索引.json"));
+      const modIndexRes = await fetch(guideAsset("data/模组索引.json"), {
+        cache: "no-store",
+      });
       if (!modIndexRes.ok)
         throw new Error(`读取模组索引失败：HTTP ${modIndexRes.status}`);
       const modIndexJson = await modIndexRes.json();
@@ -2064,25 +2073,49 @@ export const data = {
       const coreJson = await coreRes.json();
       const catalog: GuideModEntry[] = (modIndexJson["模组"] ?? []).map(normalizeModEntry);
       const initialRequest =
-        requestedModIds ??
-        catalog.filter((entry) => entry.defaultEnabled).map((entry) => entry.id);
+        requestedModIds ?? catalog.map((entry) => entry.id);
       const selectedIds = resolveModIds(catalog, initialRequest);
       const selectedSet = new Set(selectedIds);
       const selectedEntries = catalog.filter((entry) => selectedSet.has(entry.id));
 
-      const modPayloads = await Promise.all(
-        selectedEntries.map(async (entry) => {
-          const suffix = entry.hash ? `?v=${encodeURIComponent(entry.hash)}` : "";
-          const response = await fetch(
-            guideAsset(`data/${entry.dataPath}${suffix}`),
-          );
-          if (!response.ok)
-            throw new Error(
-              `读取模组“${entry.name}”失败：HTTP ${response.status}`,
+      const allSelected =
+        selectedIds.length === catalog.length &&
+        catalog.every((entry) => selectedSet.has(entry.id));
+      const allDataPath = String(modIndexJson["全部数据路径"] ?? "");
+      const allDataHash = String(modIndexJson["全部哈希"] ?? "");
+
+      const modPayloads =
+        allSelected && allDataPath
+          ? [
+              await (async () => {
+                const suffix = allDataHash
+                  ? `?v=${encodeURIComponent(allDataHash)}`
+                  : "";
+                const response = await fetch(
+                  guideAsset(`data/${allDataPath}${suffix}`),
+                );
+                if (!response.ok)
+                  throw new Error(
+                    `读取全部模组数据失败：HTTP ${response.status}`,
+                  );
+                return response.json();
+              })(),
+            ]
+          : await Promise.all(
+              selectedEntries.map(async (entry) => {
+                const suffix = entry.hash
+                  ? `?v=${encodeURIComponent(entry.hash)}`
+                  : "";
+                const response = await fetch(
+                  guideAsset(`data/${entry.dataPath}${suffix}`),
+                );
+                if (!response.ok)
+                  throw new Error(
+                    `读取模组“${entry.name}”失败：HTTP ${response.status}`,
+                  );
+                return response.json();
+              }),
             );
-          return response.json();
-        }),
-      );
       if (generation !== loadGeneration) return;
 
       const mergedRecords = [

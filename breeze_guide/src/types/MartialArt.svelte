@@ -7,7 +7,7 @@ import ThingLink from "./ThingLink.svelte";
 import Technique from "./Technique.svelte";
 import BonusContainer from "./BonusContainer.svelte";
 import MartialArtRequirements from "./MartialArtRequirements.svelte";
-import { t } from "@transifex/native";
+import { t } from "../界面翻译";
 
 const data = getContext<CddaData>("data");
 

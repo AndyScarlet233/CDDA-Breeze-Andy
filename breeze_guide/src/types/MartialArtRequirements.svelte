@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "@transifex/native";
+import { t } from "../界面翻译";
 
 import { singularName } from "../data";
 import type { MartialArtBuff, MartialArtRequirements } from "../types";

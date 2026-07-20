@@ -2,7 +2,7 @@
 import { getContext } from "svelte";
 import type { CddaData } from "../../data";
 import { terrainByOMSAppearance } from "./spawnLocations";
-import { t } from "@transifex/native";
+import { t } from "../../界面翻译";
 import LocationTable from "./LocationTable.svelte";
 
 export let item_id: string;
