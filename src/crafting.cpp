@@ -116,6 +116,7 @@ static const std::string flag_BLIND_HARD( "BLIND_HARD" );
 static const std::string flag_FULL_MAGAZINE( "FULL_MAGAZINE" );
 static const std::string flag_NO_RESIZE( "NO_RESIZE" );
 static const std::string flag_UNCRAFT_LIQUIDS_CONTAINED( "UNCRAFT_LIQUIDS_CONTAINED" );
+static const std::string var_craft_queue_order( "craft_queue_order" );
 
 class basecamp;
 
@@ -213,8 +214,67 @@ static bool npc_can_reach_crafting_position( const Character &crafter, const tri
     return false;
 }
 
+static bool craft_is_assigned_to( const item &craft, const npc &who )
+{
+    if( !craft.is_craft() ) {
+        return false;
+    }
+    const std::string crafter_id = craft.get_var( "crafter_id", "" );
+    return ( !crafter_id.empty() && crafter_id == std::to_string( who.getID().get_value() ) ) ||
+           craft.get_var( "crafter", "" ) == who.name;
+}
+
+static std::optional<tripoint> npc_crafting_queue_location( const npc &who )
+{
+    map &here = get_map();
+    const auto location_from = [&]( const player_activity & act ) -> std::optional<tripoint> {
+        if( act.id() == ACT_MULTIPLE_CRAFT && act.placement != player_activity::invalid_place ) {
+            return here.bub_from_abs( act.placement ).raw();
+        }
+        return std::nullopt;
+    };
+
+    if( const std::optional<tripoint> current = location_from( who.activity ) ) {
+        return current;
+    }
+    for( const player_activity &queued_activity : who.backlog ) {
+        if( const std::optional<tripoint> queued = location_from( queued_activity ) ) {
+            return queued;
+        }
+    }
+    return std::nullopt;
+}
+
+static int next_crafting_queue_order( const npc &who, const tripoint &anchor )
+{
+    map &here = get_map();
+    int result = 0;
+    const auto include = [&]( const item & candidate ) {
+        if( craft_is_assigned_to( candidate, who ) ) {
+            result = std::max( result, static_cast<int>( candidate.get_var( var_craft_queue_order, 0 ) ) );
+        }
+    };
+
+    // Workbench placement may overflow by one or two tiles.  Keep the scan tiny and only inspect
+    // items already assigned to this NPC, so adding an entry remains effectively constant cost.
+    for( const tripoint &pt : here.points_in_radius( anchor, 2 ) ) {
+        for( const item &candidate : here.i_at( pt ) ) {
+            include( candidate );
+        }
+        if( const optional_vpart_position vp = here.veh_at( pt ) ) {
+            const int cargo_part = vp->vehicle().part_with_feature( vp->part_index(), "CARGO", false );
+            if( cargo_part >= 0 ) {
+                for( const item &candidate : vp->vehicle().get_items( cargo_part ) ) {
+                    include( candidate );
+                }
+            }
+        }
+    }
+    return result + 1;
+}
+
 static std::string crafting_failure_reason( Character &crafter, const recipe &rec,
-        int batch_size, const std::optional<tripoint> &workplace )
+        int batch_size, const std::optional<tripoint> &workplace, bool allow_queue_append = false )
 {
     const std::optional<tripoint> effective_workplace = resolve_crafting_workplace(
                 crafter, workplace );
@@ -229,7 +289,13 @@ static std::string crafting_failure_reason( Character &crafter, const recipe &re
     }
     if( const npc *guy = crafter.as_npc(); guy != nullptr &&
         ( guy->has_activity() || !crafter.activity.is_null() ) ) {
-        return string_format( _( "%s正在忙碌，无法开始新的制作。" ), crafter.get_name() );
+        const std::optional<tripoint> queue_location = npc_crafting_queue_location( *guy );
+        const tripoint desired_location = effective_workplace ? *effective_workplace : crafter.pos();
+        const bool appending_same_queue = allow_queue_append && queue_location &&
+                                          *queue_location == desired_location;
+        if( !appending_same_queue ) {
+            return string_format( _( "%s正在忙碌，无法开始新的制作。" ), crafter.get_name() );
+        }
     }
 
     if( effective_workplace ) {
@@ -926,8 +992,44 @@ void Character::make_all_craft( const recipe_id &id_to_make, int batch_size,
     make_craft_with_command( id_to_make, batch_size, true, loc );
 }
 
+bool Character::queue_craft( const recipe_id &id_to_make, int batch_size,
+                             const std::optional<tripoint> &loc )
+{
+    npc *npc_crafter = as_npc();
+    if( npc_crafter == nullptr ) {
+        popup( _( "制造清单目前只用于附近的NPC盟友。" ), PF_NONE );
+        return false;
+    }
+
+    const recipe &recipe_to_make = *id_to_make;
+    if( !recipe_to_make ) {
+        return false;
+    }
+
+    // Once a queue has started, all new entries use its existing anchor.  This keeps automatic
+    // workplace selection from drifting if another bench later becomes preferable.
+    const std::optional<tripoint> queue_location = npc_crafting_queue_location( *npc_crafter );
+    const std::optional<tripoint> effective_workplace = queue_location ? queue_location :
+            resolve_crafting_workplace( *this, loc );
+    const tripoint anchor = effective_workplace ? *effective_workplace : pos();
+    const int order_before = next_crafting_queue_order( *npc_crafter, anchor );
+
+    const std::string reason = crafting_failure_reason( *this, recipe_to_make, batch_size,
+                               effective_workplace, true );
+    if( !reason.empty() ) {
+        popup( reason, PF_NONE );
+        return false;
+    }
+    if( !crafting_allowed( *this, recipe_to_make, effective_workplace ) ) {
+        return false;
+    }
+
+    make_craft_with_command( id_to_make, batch_size, false, effective_workplace, true );
+    return next_crafting_queue_order( *npc_crafter, anchor ) > order_before;
+}
+
 void Character::make_craft_with_command( const recipe_id &id_to_make, int batch_size, bool is_long,
-        const std::optional<tripoint> &loc )
+        const std::optional<tripoint> &loc, bool queued )
 {
     const recipe &recipe_to_make = *id_to_make;
 
@@ -936,7 +1038,7 @@ void Character::make_craft_with_command( const recipe_id &id_to_make, int batch_
     }
 
     const std::optional<tripoint> effective_workplace = resolve_crafting_workplace( *this, loc );
-    *last_craft = craft_command( &recipe_to_make, batch_size, is_long, this, effective_workplace );
+    *last_craft = craft_command( &recipe_to_make, batch_size, is_long, this, effective_workplace, queued );
     last_craft->execute();
 }
 
@@ -1146,7 +1248,7 @@ static item_location place_craft_or_disassembly(
     return craft_in_world;
 }
 
-void Character::start_craft( craft_command &command, const std::optional<tripoint> &loc )
+void Character::start_craft( craft_command &command, const std::optional<tripoint> &loc, bool queued )
 {
     if( command.empty() ) {
         debugmsg( "Attempted to start craft with empty command" );
@@ -1167,28 +1269,52 @@ void Character::start_craft( craft_command &command, const std::optional<tripoin
         calc_encumbrance();
     }
 
-    item_location craft_in_world = place_craft_or_disassembly( *this, craft, loc );
+    npc *npc_crafter = as_npc();
+    const std::optional<tripoint> existing_queue_location = npc_crafter ?
+            npc_crafting_queue_location( *npc_crafter ) : std::nullopt;
+    const std::optional<tripoint> queue_location = npc_crafter ?
+            std::optional<tripoint>( existing_queue_location ? *existing_queue_location :
+                                     ( loc ? *loc : pos() ) ) : loc;
+
+    // NPC queue entries are physical in-progress crafts on the selected workplace.  Keeping them
+    // out of the NPC inventory prevents newly made clothing and containers from being worn while
+    // another queued recipe is started.
+    item_location craft_in_world = place_craft_or_disassembly( *this, craft, queue_location );
 
     if( !craft_in_world ) {
         return;
     }
-    
-    if (is_avatar()) {
-        assign_activity(player_activity(craft_activity_actor(craft_in_world, command.is_long())));
-    }
-    else {
-        // set flag to craft
-        craft_in_world.get_item()->set_var("crafter", name);
-        craft_in_world.get_item()->set_var("crafter_id", id.get_value());
-        player_activity npc_crafting( ACT_MULTIPLE_CRAFT );
-        npc_crafting.placement = get_map().getglobal( craft_in_world.position() );
-        assign_activity( npc_crafting );
+
+    bool appended_to_queue = false;
+    if( is_avatar() ) {
+        assign_activity( player_activity( craft_activity_actor( craft_in_world, command.is_long() ) ) );
+    } else {
+        cata_assert( npc_crafter != nullptr );
+        item *queued_craft = craft_in_world.get_item();
+        queued_craft->set_var( "crafter", name );
+        queued_craft->set_var( "crafter_id", id.get_value() );
+        queued_craft->set_var( var_craft_queue_order,
+                               next_crafting_queue_order( *npc_crafter, *queue_location ) );
+
+        appended_to_queue = existing_queue_location.has_value();
+        if( !appended_to_queue ) {
+            player_activity npc_crafting( ACT_MULTIPLE_CRAFT );
+            npc_crafting.placement = get_map().getglobal( *queue_location );
+            assign_activity( npc_crafting );
+        }
     }
 
-    add_msg_player_or_npc(
-        pgettext( "in progress craft", "You start working on the %s." ),
-        pgettext( "in progress craft", "<npcname> starts working on the %s." ),
-        craft.tname() );
+    if( appended_to_queue || queued ) {
+        add_msg_player_or_npc(
+            _( "你把%s加入了制造清单。" ),
+            _( "<npcname>把%s加入了制造清单。" ),
+            craft.tname() );
+    } else {
+        add_msg_player_or_npc(
+            pgettext( "in progress craft", "You start working on the %s." ),
+            pgettext( "in progress craft", "<npcname> starts working on the %s." ),
+            craft.tname() );
+    }
 }
 
 bool Character::craft_skill_gain( const item &craft, const int &num_practice_ticks )

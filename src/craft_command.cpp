@@ -212,7 +212,7 @@ void craft_command::execute( bool only_cache_comps )
         return;
     }
 
-    crafter->start_craft( *this, loc );
+    crafter->start_craft( *this, loc, queued );
     crafter->last_batch = batch_size;
     crafter->lastrecipe = rec->ident();
 

@@ -749,6 +749,13 @@
   },
   {
     "type": "keybinding",
+    "id": "QUEUE_CRAFT",
+    "category": "CRAFTING",
+    "name": "加入NPC制造清单",
+    "bindings": [ { "input_method": "keyboard_any", "key": "q" } ]
+  },
+  {
+    "type": "keybinding",
     "id": "CYCLE_BATCH",
     "category": "CRAFTING",
     "name": "Batch crafting",
