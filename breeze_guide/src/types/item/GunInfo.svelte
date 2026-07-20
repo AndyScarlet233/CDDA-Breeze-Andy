@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "../../界面翻译";
+import { t } from "@transifex/native";
 
 import type { DamageUnit, GunSlot, ItemBasicInfo } from "../../types";
 import ThingLink from "../ThingLink.svelte";

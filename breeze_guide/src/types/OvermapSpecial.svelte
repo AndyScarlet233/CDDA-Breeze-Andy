@@ -11,7 +11,7 @@ import {
   overmapAppearance,
 } from "./item/spawnLocations";
 import ThingLink from "./ThingLink.svelte";
-import { t } from "../界面翻译";
+import { t } from "@transifex/native";
 import OvermapAppearance from "./item/OvermapAppearance.svelte";
 import ItemTable from "./item/ItemTable.svelte";
 

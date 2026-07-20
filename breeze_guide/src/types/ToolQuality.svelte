@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "../界面翻译";
+import { t } from "@transifex/native";
 
 import { getContext } from "svelte";
 import { byName, CddaData, singularName, i18n } from "../data";

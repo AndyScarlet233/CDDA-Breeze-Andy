@@ -4,7 +4,7 @@ import type { CddaData } from "../data";
 import ThingLink from "./ThingLink.svelte";
 import { getContext } from "svelte";
 import type { Fault } from "../types";
-import { t } from "../界面翻译";
+import { t } from "@transifex/native";
 import RequirementDataTools from "./item/RequirementDataTools.svelte";
 import JsonView from "../JsonView.svelte";
 
@@ -176,7 +176,7 @@ const fault_flag_descriptions: Record<string, string> = {
       </dl>
 
       <details>
-        <summary>故障原始 JSON</summary>
+        <summary>Fault JSON</summary>
         <JsonView obj={fault_fix} buildNumber={data.build_number} />
       </details>
     </section>

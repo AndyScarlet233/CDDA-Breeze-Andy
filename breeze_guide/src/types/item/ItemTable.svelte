@@ -6,7 +6,7 @@ import ItemSymbol from "./ItemSymbol.svelte";
 import type { Loot } from "./spawnLocations";
 import { showNumber, showProbability } from "./utils";
 import type { CddaData } from "../../data";
-import { t } from "../../界面翻译";
+import { t } from "@transifex/native";
 import type { SupportedTypesWithMapped } from "src/types";
 
 export let loot: Loot | Promise<Loot>;

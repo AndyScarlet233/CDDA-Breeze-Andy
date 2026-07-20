@@ -1,5 +1,5 @@
 <script lang="ts">
-import { t } from "./界面翻译";
+import { t } from "@transifex/native";
 import { setContext } from "svelte";
 import type { Component } from "svelte";
 
@@ -132,11 +132,9 @@ const display = (obj && displays[obj.type]) ?? Unknown;
   <div class="thing-source"><SourceBadge item={obj} /></div>
   {#if error}
     <section>
-      <h1>{t("Error")}</h1>
+      <h1>错误</h1>
       <p>
-        {t(
-          "There was a problem displaying this page. Not all versions of Cataclysm are supported by the Guide currently. Try selecting a different build.",
-        )}
+        显示此页面时出现了问题。请返回上一页，或展开下方原始 JSON 查看数据。
       </p>
       <details>
         <summary>{error.message}</summary>
@@ -158,10 +156,11 @@ const display = (obj && displays[obj.type]) ?? Unknown;
   {/if}
 
   <details>
-    <summary>{t("Raw JSON")}</summary>
+    <summary>原始 JSON</summary>
     <JsonView {obj} buildNumber={data.build_number} />
   </details>
 {/if}
+
 
 <style>
 .thing-source {

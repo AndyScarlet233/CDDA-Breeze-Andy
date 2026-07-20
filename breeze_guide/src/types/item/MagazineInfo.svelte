@@ -5,7 +5,7 @@ import { byName, CddaData } from "../../data";
 import type { ItemBasicInfo } from "../../types";
 import ThingLink from "../ThingLink.svelte";
 import ItemSymbol from "./ItemSymbol.svelte";
-import { t } from "../../界面翻译";
+import { t } from "@transifex/native";
 
 export let item: ItemBasicInfo;
 const data = getContext<CddaData>("data");

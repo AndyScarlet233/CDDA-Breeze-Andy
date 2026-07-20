@@ -17,7 +17,7 @@ import type {
   SupportedTypesWithMapped,
 } from "./types";
 import { setContext } from "svelte";
-import { guideTypeName, t } from "./界面翻译";
+import { t } from "@transifex/native";
 import ThingLink from "./types/ThingLink.svelte";
 import LimitedList from "./LimitedList.svelte";
 import LimitedTableList from "./LimitedTableList.svelte";
@@ -28,6 +28,7 @@ import {
 } from "./types/item/spawnLocations";
 import { isSpoilerItem } from "./spoilers";
 import SourceBadge from "./SourceBadge.svelte";
+import { guideTypeName } from "./界面名称";
 
 const SEARCHABLE_TYPES = new Set<keyof SupportedTypesWithMapped>([
   "item",
@@ -196,7 +197,7 @@ function groupByAppearance(results: SearchResult[]): OvermapSpecial[][] {
               >{omsName(data, result[0])}</a
             >
             <SourceBadge item={result[0]} compact={true} />
-            {#if result.length > 1}{t("({n} variants)", { n: result.length })}{/if}
+            {#if result.length > 1}（{result.length} 种变体）{/if}
           </td>
         </tr>
       </LimitedTableList>
@@ -209,7 +210,7 @@ function groupByAppearance(results: SearchResult[]): OvermapSpecial[][] {
           type={mapType(result.item.type)}
           id={result.item.id}
           variantId={result.variant?.id} />
-        <SourceBadge item={item} compact={true} />
+        <SourceBadge {item} compact={true} />
         {#if /obsolet/.test(result.item.__filename ?? "")}
           <em style="color: var(--cata-color-gray)"
             >({t("obsolete", { _context: "Search Results" })})</em>
@@ -217,7 +218,7 @@ function groupByAppearance(results: SearchResult[]): OvermapSpecial[][] {
       </LimitedList>
     {/if}
   {:else}
-    <em>{t("No results.", { _context: "Search Results" })}</em>
+    <em>没有找到结果。</em>
   {/each}
 {:else if data || !$loadProgress}
   <pre>...</pre>

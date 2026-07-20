@@ -8,7 +8,7 @@ import {
 } from "../data";
 import { getContext } from "svelte";
 import ThingLink from "./ThingLink.svelte";
-import { t } from "../界面翻译";
+import { t } from "@transifex/native";
 import LimitedList from "../LimitedList.svelte";
 import ItemSymbol from "./item/ItemSymbol.svelte";
 

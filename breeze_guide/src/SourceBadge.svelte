@@ -1,26 +1,28 @@
 <script lang="ts">
-import { cleanDisplayName } from "./界面翻译";
+import { cleanDisplayName } from "./界面名称";
 
 export let item: any = undefined;
-export let sourceId = "";
-export let sourceName = "";
 export let compact = false;
 
-$: resolvedId = String(sourceId || item?.__source_id || "dda");
-$: resolvedName = cleanDisplayName(
-  sourceName || item?.__source_name || (resolvedId === "dda" ? "微风本体" : resolvedId),
-);
-$: sourceType = String(item?.__source_type || "");
-$: hue = [...resolvedId].reduce((sum, char) => sum + char.charCodeAt(0) * 17, 0) % 360;
+$: sourceId = String(item?.__source_id ?? "dda");
+$: sourceType = String(item?.__source_type ?? "");
+$: visible = sourceId !== "dda" && sourceType !== "本体";
+$: sourceName = cleanDisplayName(item?.__source_name || sourceId);
+$: hue = [...sourceId].reduce(
+  (sum, char) => sum + char.charCodeAt(0) * 17,
+  0,
+) % 360;
 </script>
 
-<span
-  class:compact
-  class="source-badge"
-  style={`--source-hue: ${hue}`}
-  title={sourceType ? `${resolvedName}，${sourceType}` : resolvedName}>
-  {resolvedName}
-</span>
+{#if visible}
+  <span
+    class:compact
+    class="source-badge"
+    style={`--source-hue: ${hue}`}
+    title={`来自模组：${sourceName}`}>
+    {sourceName}
+  </span>
+{/if}
 
 <style>
 .source-badge {

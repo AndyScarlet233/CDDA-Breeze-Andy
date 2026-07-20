@@ -4,7 +4,7 @@ import { byName, CddaData } from "../../data";
 import LimitedList from "../../LimitedList.svelte";
 import ThingLink from "../ThingLink.svelte";
 import ItemSymbol from "./ItemSymbol.svelte";
-import { t } from "../../界面翻译";
+import { t } from "@transifex/native";
 
 export let item_id: string;
 

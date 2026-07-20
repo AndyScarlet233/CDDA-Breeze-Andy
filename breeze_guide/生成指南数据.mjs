@@ -3,7 +3,6 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import gettextParser from "gettext-parser";
 
 const guideDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(guideDir, "..");
@@ -14,76 +13,24 @@ const extractDir = path.join(guideDir, ".模组展开缓存");
 const outputDir = path.join(guideDir, "public", "data");
 const configPath = path.join(guideDir, "模组发布清单.json");
 const versionPath = path.join(repoRoot, "src", "version.h");
-const poPath = path.join(repoRoot, "lang", "po", "zh_CN.po");
 
 const repository = process.env.GITHUB_REPOSITORY || "AndyScarlet233/CDDA-Breeze-Andy";
 const sourceRef = process.env.GITHUB_SHA || process.env.GITHUB_REF_NAME || "test/next-release";
 const generatedAt = new Date().toISOString();
-
-const poTranslations = loadPoTranslations(poPath);
-
-const preferredModNames = new Map([
-  ["aftershock", "余波"],
-  ["aftershock_exoplanet", "余波：系外行星"],
-  ["alt_map_key", "替代地图按键"],
-  ["Arcana_Breeze", "奥术与魔法物品"],
-  ["backrooms", "后室"],
-  ["blazeindustries", "烈焰工业"],
-  ["Breeze", "微风"],
-  ["cbm_slots", "仿生器官槽位"],
-  ["classic_zombies", "死亡之日"],
-  ["crazy_cataclysm", "疯狂大灾变"],
-  ["deadly_bites", "致命丧尸病毒"],
-  ["desertpack", "沙漠地区"],
-  ["DinoMod", "恐龙模组"],
-  ["extra_mut_scens", "额外变异场景"],
-  ["generic_guns", "通用枪械"],
-  ["Graphical_Overmap", "图形化大地图"],
-  ["Graphical_Overmap_Magiclysm", "图形化大地图：魔法大灾变"],
-  ["innawood", "林中求生"],
-  ["MA", "马萨诸塞"],
-  ["magiclysm", "魔法大灾变"],
-  ["megafauna", "巨型动物"],
-  ["military_professions", "军事职业包"],
-  ["MMA", "神话武术"],
-  ["my_sweet_cataclysm", "甜蜜大灾变"],
-  ["Mythos", "神话模组：无丧尸"],
-  ["no_fungal_growth", "禁止真菌生长"],
-  ["No_Fungi", "禁用真菌怪物"],
-  ["no_hope", "绝望"],
-  ["no_npc_food", "禁用 NPC 生理需求"],
-  ["No_Rail_Stations", "禁用铁路车站"],
-  ["Cata++_Breeze", "大灾变++"],
-  ["Only_Wildlife", "仅野生动物"],
-  ["package_bionic_professions", "仿生职业"],
-  ["personal_portal_storms", "传送门风暴忽略 NPC"],
-  ["Rummaging", "翻找"],
-  ["ruralbiome", "纯乡村地图生成"],
-  ["sees_player_hitbutton", "玩家可见与命中按钮图标"],
-  ["sees_player_retro", "复古状态图标"],
-  ["speedydex", "敏捷加速"],
-  ["standard_combat_test", "标准战斗测试套件"],
-  ["stats_through_kills", "击杀提升属性"],
-  ["StatsThroughSkills", "技能提升属性"],
-  ["Tamable_Wildlife", "可驯服野生动物"],
-  ["translate_dialogue", "复杂对话翻译"],
-  ["tropicata", "热带大灾变"],
-  ["xedra_evolved", "泽德拉进化"],
-  ["Murka's weapon", "穆尔卡的武器工坊"],
-]);
-
-const nonContentOnlyTypes = new Set([
+const zhTranslations = readPoTranslations(
+  path.join(repoRoot, "lang", "po", "zh_CN.po"),
+);
+const guideIgnoredOnlyTypes = new Set([
   "EXTERNAL_OPTION",
   "MONSTER_WHITELIST",
-  "MONSTER_BLACKLIST",
-  "ITEM_BLACKLIST",
-  "SCENARIO_BLACKLIST",
-  "region_overlay",
-  "region_settings",
   "MONSTER_FACTION",
+  "region_settings",
+  "region_overlay",
   "mod_tileset",
   "skill_boost",
-  "MIGRATION",
+  "effect_on_condition",
+  "event_statistic",
+  "score",
 ]);
 
 const config = readJson(configPath);
@@ -122,7 +69,7 @@ console.log(`本体：${coreRecords.length} 个 JSON 对象`);
 
 const indexEntries = [];
 const entryById = new Map();
-const recordsById = new Map();
+const defaultIds = new Set(config["默认启用模组"] ?? []);
 const requiredIds = new Set(config["必需启用模组"] ?? []);
 const excludedBundled = new Set(config["排除内置模组"] ?? []);
 
@@ -195,61 +142,18 @@ for (const upload of config["上传模组"] ?? []) {
   }
 }
 
-const initiallyKeptIds = new Set(
-  indexEntries
-    .filter((entry) => entry["对象数量"] > 0 || entry["必需启用"] || entry.__forcePublish)
-    .map((entry) => entry["标识"]),
+const orderedEntries = [...indexEntries].sort((a, b) =>
+  a["名称"].localeCompare(b["名称"], "zh-CN"),
 );
-
-const keptIds = new Set(initiallyKeptIds);
-let dependencyAdded = true;
-while (dependencyAdded) {
-  dependencyAdded = false;
-  for (const id of [...keptIds]) {
-    const entry = entryById.get(id);
-    for (const dependency of entry?.["依赖"] ?? []) {
-      if (!entryById.has(dependency) || keptIds.has(dependency)) continue;
-      keptIds.add(dependency);
-      dependencyAdded = true;
-    }
-  }
-}
-
-for (const entry of indexEntries) {
-  if (!keptIds.has(entry["标识"])) {
-    console.log(`不发布无可检索内容的模组：${entry["名称"]}（${entry["标识"]}）`);
-  }
-}
-
-const orderedEntries = indexEntries
-  .filter((entry) => keptIds.has(entry["标识"]))
-  .map(({ __forcePublish: _forcePublish, ...entry }) => entry)
-  .sort((a, b) => a["名称"].localeCompare(b["名称"], "zh-CN"));
-
-const allModsDataPath = "模组/全部/all.json";
-const allModsRecords = orderedEntries.flatMap(
-  (entry) => recordsById.get(entry["标识"]) ?? [],
-);
-const allModsHash = writeDataPack(path.join(outputDir, allModsDataPath), {
-  build_number: version,
-  release: {
-    version,
-    generated_at: generatedAt,
-    mod_ids: orderedEntries.map((entry) => entry["标识"]),
-  },
-  data: allModsRecords,
-});
 
 const modIndex = {
-  "格式版本": 2,
+  "格式版本": 1,
   "游戏版本": version,
   "生成时间": generatedAt,
   "仓库": repository,
   "源码引用": sourceRef,
-  "默认启用": orderedEntries.map((x) => x["标识"]),
+  "默认启用": orderedEntries.filter((x) => x["默认启用"]).map((x) => x["标识"]),
   "必需启用": orderedEntries.filter((x) => x["必需启用"]).map((x) => x["标识"]),
-  "全部数据路径": allModsDataPath,
-  "全部哈希": allModsHash,
   "模组": orderedEntries,
 };
 writeJson(path.join(outputDir, "模组索引.json"), modIndex);
@@ -259,12 +163,10 @@ writeJson(path.join(outputDir, "构建信息.json"), {
   "本体对象数": coreRecords.length,
   "已发布模组数": orderedEntries.length,
   "模组对象总数": orderedEntries.reduce((sum, x) => sum + x["对象数量"], 0),
-  "模组数据对象总数": allModsRecords.length,
 });
 
 fs.rmSync(extractDir, { recursive: true, force: true });
 console.log(`已发布 ${orderedEntries.length} 个只读模组数据包`);
-console.log(`默认全选数据包：${allModsRecords.length} 个 JSON 对象`);
 console.log(`输出目录：${path.relative(repoRoot, outputDir)}`);
 
 function publishMod({ root, info, sourceType, sourcePath, override, replaceExisting }) {
@@ -279,15 +181,18 @@ function publishMod({ root, info, sourceType, sourcePath, override, replaceExist
     }
     const previous = entryById.get(id);
     indexEntries.splice(indexEntries.indexOf(previous), 1);
-    recordsById.delete(id);
   }
 
+  const sourceDisplayName = cleanDisplayName(
+    textValue(override["名称"] ?? info.name ?? id),
+  );
   const displayName = override["名称"]
-    ? cleanDisplayText(textValue(override["名称"]))
-    : preferredModNames.get(id) ?? localizePoText(info.name ?? id);
+    ? sourceDisplayName
+    : cleanDisplayName(zhTranslations.get(sourceDisplayName) || sourceDisplayName);
+  const sourceDescription = textValue(override["说明"] ?? info.description ?? "");
   const description = override["说明"]
-    ? cleanDisplayText(textValue(override["说明"]))
-    : localizePoText(info.description ?? "");
+    ? sourceDescription
+    : zhTranslations.get(sourceDescription) || sourceDescription;
   const slug = safeSegment(id) || `mod-${shortHash(id)}`;
   const sourceName = displayName || id;
   const records = collectJsonDirectory(root, {
@@ -299,10 +204,13 @@ function publishMod({ root, info, sourceType, sourcePath, override, replaceExist
       sourceType === "开发者上传模组" ? sourcePath : undefined,
   }).filter((record) => record.type !== "MOD_INFO");
 
-  const searchableObjectCount = records.filter(
-    (record) => !nonContentOnlyTypes.has(String(record.type ?? "")),
-  ).length;
-  recordsById.set(id, records);
+  const guideVisibleRecords = records.filter(
+    (record) => !guideIgnoredOnlyTypes.has(record.type),
+  );
+  if (guideVisibleRecords.length === 0) {
+    console.log(`跳过无可检索内容的模组：${displayName}（${id}）`);
+    return;
+  }
 
   const dataPath = `模组/${slug}/all.json`;
   const payload = {
@@ -327,20 +235,16 @@ function publishMod({ root, info, sourceType, sourcePath, override, replaceExist
     "分类": textValue(info.category ?? ""),
     "依赖": normalizeTextArray(info.dependencies).filter((x) => x !== "dda"),
     "数据路径": dataPath,
-    "对象数量": searchableObjectCount,
-    "数据对象数量": records.length,
+    "对象数量": records.length,
     "哈希": sha,
-    "默认启用": override["默认启用"] ?? true,
+    "默认启用": override["默认启用"] ?? defaultIds.has(id),
     "必需启用": override["必需启用"] ?? requiredIds.has(id),
     "来源类型": sourceType,
     "来源路径": sourcePath,
-    __forcePublish: override["强制收录"] === true,
   };
   indexEntries.push(entry);
   entryById.set(id, entry);
-  console.log(
-    `模组：${displayName}（${id}），${searchableObjectCount} 个可检索对象，${records.length} 个数据对象`,
-  );
+  console.log(`模组：${displayName}（${id}），${records.length} 个对象`);
 }
 
 function collectJsonDirectory(directory, source) {
@@ -531,6 +435,59 @@ function findAllPaths(root) {
   return output;
 }
 
+function cleanDisplayName(value) {
+  return String(value ?? "")
+    .replace(/<color_[^>]+>/gi, "")
+    .replace(/<\/color>/gi, "")
+    .trim();
+}
+
+function readPoTranslations(filename) {
+  const translations = new Map();
+  if (!fs.existsSync(filename)) return translations;
+
+  const lines = fs.readFileSync(filename, "utf8").replace(/^\uFEFF/, "").split(/\r?\n/);
+  let entry = {};
+  let active = null;
+
+  const flush = () => {
+    const msgid = entry.msgid;
+    const msgstr = entry.msgstr || entry.msgstr0;
+    if (msgid && msgstr && !translations.has(msgid)) {
+      translations.set(msgid, msgstr);
+    }
+    entry = {};
+    active = null;
+  };
+
+  const parseQuoted = (text) => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return "";
+    }
+  };
+
+  for (const line of lines) {
+    if (line.startsWith("msgid ")) {
+      entry.msgid = parseQuoted(line.slice(6).trim());
+      active = "msgid";
+    } else if (line.startsWith("msgstr ")) {
+      entry.msgstr = parseQuoted(line.slice(7).trim());
+      active = "msgstr";
+    } else if (line.startsWith("msgstr[0] ")) {
+      entry.msgstr0 = parseQuoted(line.slice(10).trim());
+      active = "msgstr0";
+    } else if (line.startsWith('"') && active) {
+      entry[active] = (entry[active] || "") + parseQuoted(line.trim());
+    } else if (line.trim() === "") {
+      flush();
+    }
+  }
+  flush();
+  return translations;
+}
+
 function writeDataPack(filename, value) {
   const json = JSON.stringify(value);
   fs.mkdirSync(path.dirname(filename), { recursive: true });
@@ -580,36 +537,6 @@ function shortHash(value) {
 
 function githubBlobUrl(repoPath) {
   return `https://github.com/${repository}/blob/${sourceRef}/${repoPath.split("/").map(encodeURIComponent).join("/")}`;
-}
-
-function loadPoTranslations(filename) {
-  const result = new Map();
-  if (!fs.existsSync(filename)) return result;
-  try {
-    const parsed = gettextParser.po.parse(fs.readFileSync(filename));
-    for (const messages of Object.values(parsed.translations ?? {})) {
-      for (const [msgid, value] of Object.entries(messages ?? {})) {
-        if (!msgid || result.has(msgid)) continue;
-        const translated = value?.msgstr?.find((candidate) => candidate);
-        if (translated) result.set(msgid, translated);
-      }
-    }
-  } catch (error) {
-    console.warn(`读取中文翻译失败，模组名称将使用原文：${error.message}`);
-  }
-  return result;
-}
-
-function cleanDisplayText(value) {
-  return String(value ?? "")
-    .replace(/<color_[^>]+>/gi, "")
-    .replace(/<\/color>/gi, "")
-    .trim();
-}
-
-function localizePoText(value) {
-  const source = textValue(value);
-  return cleanDisplayText(poTranslations.get(source) ?? source);
 }
 
 function textValue(value) {

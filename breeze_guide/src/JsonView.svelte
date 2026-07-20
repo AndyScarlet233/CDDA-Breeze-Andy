@@ -1,6 +1,5 @@
 <script lang="ts">
-import { t } from "./界面翻译";
-import SourceBadge from "./SourceBadge.svelte";
+import { t } from "@transifex/native";
 export let obj: any;
 export let buildNumber: string | undefined;
 const _context = "View/Edit on GitHub";
@@ -17,9 +16,8 @@ const sourceUrl = obj.__source_url ?? "";
   )}</pre>
 {#if sourceFilename || sourceLabel}
   <p class="source">
-    {t("来源:")} <SourceBadge item={obj} />
+    {t("来源:")} <strong>{sourceLabel}</strong>
     {#if sourceFilename}<code>{sourceFilename}</code>{/if}
-    {#if buildNumber}<small>{t("数据版本")}：{buildNumber}</small>{/if}
     {#if sourceUrl}
       <a href={sourceUrl} target="_blank" rel="noreferrer">
         {t("查看仓库来源", { _context })}
