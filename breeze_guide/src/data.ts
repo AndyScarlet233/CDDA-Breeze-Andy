@@ -2062,7 +2062,7 @@ export const data = {
       if (!coreRes.ok)
         throw new Error(`读取本体数据失败：HTTP ${coreRes.status}`);
       const coreJson = await coreRes.json();
-      const catalog = (modIndexJson["模组"] ?? []).map(normalizeModEntry);
+      const catalog: GuideModEntry[] = (modIndexJson["模组"] ?? []).map(normalizeModEntry);
       const initialRequest =
         requestedModIds ??
         catalog.filter((entry) => entry.defaultEnabled).map((entry) => entry.id);
