@@ -3569,9 +3569,10 @@ void inventory_multiselector::on_input( const inventory_input &input )
             toggle_entries( query_result, toggle_mode::SELECTED );
         }
     } else if( noMarkCountBound && input.ch >= '0' && input.ch <= '9' ) {
-        count = std::min( count, INT_MAX / 10 - 10 );
-        count *= 10;
-        count += input.ch - '0';
+        int query_result = query_count( input.ch, true );
+        if( query_result >= 0 ) {
+            toggle_entries( query_result, toggle_mode::SELECTED );
+        }
     } else if( input.action == "TOGGLE_ENTRY" ) { // Mark selected
         toggle_entries( count, toggle_mode::SELECTED );
     } else if( input.action == "INCREASE_COUNT" || input.action == "DECREASE_COUNT" ) {
@@ -3985,18 +3986,11 @@ void trade_selector::execute()
             _parent->autobalance();
         } else {
             input_event const iev = _ctxt_trade.get_raw_input();
-            const int ch = iev.get_first_input();
-            if( ctxt.keys_bound_to( "MARK_WITH_COUNT" ).empty() && ch >= '0' && ch <= '9' ) {
-                int query_result = query_count( static_cast<char>( ch ), true );
-                if( query_result >= 0 ) {
-                    toggle_entries( query_result, toggle_mode::SELECTED );
-                }
-            } else {
-                inventory_input const input = process_input( ctxt.input_to_action( iev ), ch );
-                inventory_drop_selector::on_input( input );
-                if( input.action == "HELP_KEYBINDINGS" ) {
-                    ctxt.display_menu();
-                }
+            inventory_input const input =
+                process_input( ctxt.input_to_action( iev ), iev.get_first_input() );
+            inventory_drop_selector::on_input( input );
+            if( input.action == "HELP_KEYBINDINGS" ) {
+                ctxt.display_menu();
             }
         }
     }
