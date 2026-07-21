@@ -1823,6 +1823,7 @@ crafting_selection select_crafter_and_crafting_recipe(
     bool recalc_unread = highlight_unread_recipes;
     bool keepline = false;
     bool done = false;
+    std::optional<static_popup> queue_notice;
     bool batch = false;
     bool show_hidden = false;
     size_t num_hidden = 0;
@@ -2298,7 +2299,11 @@ crafting_selection select_crafter_and_crafting_recipe(
         just_toggled_unread = false;
         ui_manager::redraw();
         const int scroll_item_info_lines = catacurses::getmaxy( w_iteminfo ) - 4;
+        const bool dismiss_queue_notice = queue_notice.has_value();
         std::string action = ctxt.handle_input();
+        if( dismiss_queue_notice ) {
+            queue_notice.reset();
+        }
         const int recmax = static_cast<int>( current.size() );
         const int scroll_rate = recmax > 20 ? 10 : 3;
 
@@ -2447,9 +2452,15 @@ crafting_selection select_crafter_and_crafting_recipe(
                 popup( _( "制造清单目前只用于附近的NPC盟友。" ), PF_NONE );
             } else {
                 const int queue_batch_size = batch ? line + 1 : 1;
+                const std::string queued_name = current[line]->result_name();
                 if( crafter->check_eligible_containers_for_crafting( *current[line],
                         queue_batch_size ) &&
                     crafter->queue_craft( current[line]->ident(), queue_batch_size, workplace ) ) {
+                    queue_notice.emplace();
+                    queue_notice->on_top( true )
+                    .default_color( c_light_green )
+                    .message( _( "已加入%s的制造清单：%s × %d。" ),
+                              crafter->get_name(), queued_name, queue_batch_size );
                     uistate.read_recipes.insert( current[line]->ident() );
                     rebuild_recipes();
                     result_info.set_crafter( *crafter );
@@ -2480,7 +2491,13 @@ crafting_selection select_crafter_and_crafting_recipe(
                 npc *selected_npc = crafter->as_npc();
                 const int selected_batch_size = batch ? line + 1 : 1;
                 if( selected_npc != nullptr && npc_has_crafting_queue_activity( *selected_npc ) ) {
+                    const std::string queued_name = current[line]->result_name();
                     if( crafter->queue_craft( current[line]->ident(), selected_batch_size, workplace ) ) {
+                        queue_notice.emplace();
+                        queue_notice->on_top( true )
+                        .default_color( c_light_green )
+                        .message( _( "已加入%s的制造清单：%s × %d。" ),
+                                  crafter->get_name(), queued_name, selected_batch_size );
                         uistate.read_recipes.insert( current[line]->ident() );
                         rebuild_recipes();
                         result_info.set_crafter( *crafter );
@@ -2831,7 +2848,8 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
 
     while( true ) {
         Character &selected_crafter = *crafting_group[current_crafter];
-        const int columns = page == settings_page::workplace ? 5 : 4;
+        const int columns = page == settings_page::workplace ? 5 :
+                            page == settings_page::queue ? 3 : 4;
         crafting_uimenu menu( columns );
         menu.set_title( _( "制造设置" ) );
         menu.set_tabs( { _( "制作者" ), _( "工作地点" ), _( "制造清单" ) },
@@ -2902,17 +2920,17 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
             }
             menu.set_selected( workplace_selected_row );
         } else {
-            menu.set_column_weights( { 10, 50, 12, 28 } );
-            menu.set_header( { _( "顺序" ), _( "制造项目" ), _( "批量" ), _( "状态" ) } );
+            menu.set_column_weights( { 58, 14, 28 } );
+            menu.set_header( { _( "制造项目" ), _( "批量" ), _( "状态" ) } );
             npc *selected_npc = selected_crafter.as_npc();
             if( selected_npc == nullptr ) {
                 menu.set_footer( _( "制造清单目前只用于NPC盟友。Tab／Shift+Tab切换分页，Esc返回。" ) );
-                menu.addentry( 3999, false, { "-", _( "请选择一名NPC制作者" ), "-", "-" } );
+                menu.addentry( 3999, false, { _( "请选择一名NPC制作者" ), "-", "-" } );
             } else {
                 std::vector<item_location> queue = crafting_queue_items( *selected_npc, workplace );
                 menu.set_footer( _( "回车管理项目，上下选择，Tab／Shift+Tab切换分页，Esc返回。" ) );
                 if( queue.empty() ) {
-                    menu.addentry( 3999, false, { "-", _( "制造清单为空，按q从配方列表加入" ),
+                    menu.addentry( 3999, false, { _( "制造清单为空，按q从配方列表加入" ),
                                                  "-", _( "空闲" ) } );
                 } else {
                     for( size_t i = 0; i < queue.size(); ++i ) {
@@ -2923,8 +2941,7 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
                         const std::string status = active ?
                                 string_format( _( "制作中 %d%%" ), progress ) : _( "等待中" );
                         menu.addentry( 3000 + static_cast<int>( i ), true,
-                                       { string_format( "%d", static_cast<int>( i + 1 ) ),
-                                         queued_item.get_making().result_name(),
+                                       { queued_item.get_making().result_name(),
                                          string_format( "%d", queued_item.get_making_batch_size() ),
                                          status } );
                     }
