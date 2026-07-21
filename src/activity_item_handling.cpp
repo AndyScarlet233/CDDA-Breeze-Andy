@@ -151,6 +151,16 @@ static bool craft_is_assigned_to( const item &craft, const npc &who )
            craft.get_var( "crafter", "" ) == who.name;
 }
 
+static bool craft_is_available_to_resume( const item &craft, const npc &who )
+{
+    if( !craft_is_assigned_to( craft, who ) ) {
+        return false;
+    }
+    // 等待中的项目保留原有顺序，但不能堵住后续制造。
+    return !craft.unattended_craft_waiting() || craft.unattended_craft_is_ready() ||
+           craft.unattended_craft_has_failed();
+}
+
 static item_location item_to_craft_at( npc &who, const tripoint_bub_ms &where )
 {
     static const std::string queue_order_var( "craft_queue_order" );
@@ -160,7 +170,7 @@ static item_location item_to_craft_at( npc &who, const tripoint_bub_ms &where )
     // back to hand crafting instead of choosing a map or vehicle workbench.
     if( where == who.pos_bub() ) {
         item_location wielded = who.get_wielded_item();
-        if( wielded && craft_is_assigned_to( *wielded, who ) ) {
+        if( wielded && craft_is_available_to_resume( *wielded, who ) ) {
             return wielded;
         }
     }
@@ -169,7 +179,7 @@ static item_location item_to_craft_at( npc &who, const tripoint_bub_ms &where )
     int best_order = std::numeric_limits<int>::max();
 
     const auto consider = [&]( item & candidate, const item_location & location ) {
-        if( !craft_is_assigned_to( candidate, who ) ) {
+        if( !craft_is_available_to_resume( candidate, who ) ) {
             return;
         }
         const int order = candidate.get_var( queue_order_var, 0 );
@@ -201,7 +211,7 @@ static item_location item_to_craft_at( npc &who, const tripoint_bub_ms &where )
 
     // Compatibility with semi-finished crafts assigned by the older dialogue workflow.
     for( item &candidate : here.i_at( where ) ) {
-        if( craft_is_assigned_to( candidate, who ) ) {
+        if( craft_is_available_to_resume( candidate, who ) ) {
             return item_location( map_cursor( where.raw() ), &candidate );
         }
     }
@@ -209,7 +219,7 @@ static item_location item_to_craft_at( npc &who, const tripoint_bub_ms &where )
         const int cargo_part = vp->vehicle().part_with_feature( vp->part_index(), "CARGO", false );
         if( cargo_part >= 0 ) {
             for( item &candidate : vp->vehicle().get_items( cargo_part ) ) {
-                if( craft_is_assigned_to( candidate, who ) ) {
+                if( craft_is_available_to_resume( candidate, who ) ) {
                     return item_location( vehicle_cursor( vp->vehicle(), cargo_part ), &candidate );
                 }
             }
