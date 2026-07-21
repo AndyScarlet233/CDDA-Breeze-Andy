@@ -137,8 +137,14 @@ class crafting_uimenu
             menu.title = title;
         }
 
-        void set_preamble( const std::string &text ) {
-            preamble = text;
+        void set_tabs( const std::vector<std::string> &labels, int current ) {
+            tabs = labels;
+            current_tab = current;
+        }
+
+        void set_column_weights( const std::vector<int> &weights ) {
+            cata_assert( static_cast<int>( weights.size() ) == column_count );
+            column_weights = weights;
         }
 
         void set_footer( const std::string &text ) {
@@ -149,8 +155,10 @@ class crafting_uimenu
             finalize();
             if( allow_page_switch ) {
                 menu.additional_actions = {
-                    { "UILIST.LEFT", to_translation( "上一页" ) },
-                    { "UILIST.RIGHT", to_translation( "下一页" ) }
+                    { "PREV_TAB", to_translation( "上一分页" ) },
+                    { "NEXT_TAB", to_translation( "下一分页" ) },
+                    { "UILIST.LEFT", to_translation( "上一分页" ) },
+                    { "UILIST.RIGHT", to_translation( "下一分页" ) }
                 };
                 menu.allow_additional = true;
             }
@@ -166,16 +174,35 @@ class crafting_uimenu
         };
 
         static std::string pad_cell( const std::string &cell, int width ) {
-            return cell + std::string( std::max( 0, width - utf8_width( cell, true ) ), ' ' );
+            const std::string trimmed = trim_by_length( cell, width );
+            return trimmed + std::string( std::max( 0, width - utf8_width( trimmed, true ) ), ' ' );
         }
 
         std::string format_columns( const std::vector<std::string> &columns,
                                     const std::vector<int> &widths ) const {
             std::string text;
             for( int i = 0; i < column_count; ++i ) {
-                text += i + 1 == column_count ? columns[i] : pad_cell( columns[i], widths[i] );
+                const std::string cell = trim_by_length( columns[i], widths[i] );
+                text += i + 1 == column_count ? cell : pad_cell( cell, widths[i] );
             }
             return text;
+        }
+
+        std::string format_tabs() const {
+            std::string result;
+            for( size_t i = 0; i < tabs.size(); ++i ) {
+                if( i > 0 ) {
+                    result += " ";
+                }
+                const std::string label = " " + tabs[i] + " ";
+                if( static_cast<int>( i ) == current_tab ) {
+                    result += colorize( "<" + label + ">", c_light_blue );
+                } else {
+                    // Keep the same visible width as the selected form so later tabs never move.
+                    result += " " + label + " ";
+                }
+            }
+            return result;
         }
 
         void finalize() {
@@ -194,17 +221,37 @@ class crafting_uimenu
             }
 
             const int available_width = std::max( 40, std::min( TERMX - 8, 120 ) );
-            const int content_width = std::accumulate( widths.begin(), widths.end(), 0 );
-            const int free_width = available_width - content_width;
-            const int spacing = std::max( 1, std::min( 3,
-                                     column_count > 1 ? free_width / ( column_count - 1 ) : 0 ) );
+            int spacing = 2;
+            if( column_count > 1 && available_width < column_count * 8 ) {
+                spacing = 1;
+            }
+            if( column_weights ) {
+                const int minimum_cell_width = 4;
+                const int usable_width = std::max( column_count * minimum_cell_width,
+                                                   available_width - spacing * ( column_count - 1 ) );
+                const int extra_width = usable_width - column_count * minimum_cell_width;
+                const int total_weight = std::accumulate( column_weights->begin(),
+                                         column_weights->end(), 0 );
+                int assigned = 0;
+                for( int i = 0; i < column_count; ++i ) {
+                    widths[i] = minimum_cell_width +
+                                ( i + 1 == column_count ? extra_width - assigned :
+                                  extra_width * ( *column_weights )[i] / total_weight );
+                    assigned += widths[i] - minimum_cell_width;
+                }
+            } else {
+                const int content_width = std::accumulate( widths.begin(), widths.end(), 0 );
+                const int free_width = available_width - content_width;
+                spacing = std::max( 1, std::min( 3,
+                                    column_count > 1 ? free_width / ( column_count - 1 ) : 0 ) );
+            }
             for( int i = 0; i < column_count - 1; ++i ) {
                 widths[i] += spacing;
             }
 
             std::string menu_text;
-            if( !preamble.empty() ) {
-                menu_text = "  " + preamble;
+            if( !tabs.empty() ) {
+                menu_text = "  " + format_tabs();
             }
             if( header ) {
                 // uilist descriptions begin two cells left of entry text because entries reserve
@@ -223,7 +270,9 @@ class crafting_uimenu
 
         int column_count;
         std::optional<std::vector<std::string>> header;
-        std::string preamble;
+        std::optional<std::vector<int>> column_weights;
+        std::vector<std::string> tabs;
+        int current_tab = 0;
         std::vector<row> rows;
         uilist menu;
 };
@@ -1090,6 +1139,9 @@ static input_context make_crafting_context( bool highlight_unread_recipes )
 {
     input_context ctxt( "CRAFTING" );
     ctxt.register_cardinal();
+    // QUEUE_CRAFT defaults to q, which is also part of the global QUIT binding.  Input actions
+    // are resolved in registration order, so register it first to make q reliably add a queue item.
+    ctxt.register_action( "QUEUE_CRAFT" );
     ctxt.register_action( "QUIT" );
     ctxt.register_action( "CONFIRM" );
     ctxt.register_action( "SCROLL_RECIPE_INFO_UP" );
@@ -1109,7 +1161,6 @@ static input_context make_crafting_context( bool highlight_unread_recipes )
     ctxt.register_action( "HELP_KEYBINDINGS" );
     ctxt.register_action( "CYCLE_BATCH" );
     ctxt.register_action( "CHOOSE_CRAFTER" );
-    ctxt.register_action( "QUEUE_CRAFT" );
     ctxt.register_action( "CHOOSE_CRAFTING_LOCATION" );
     ctxt.register_action( "RELATED_RECIPES" );
     ctxt.register_action( "HIDE_SHOW_RECIPE" );
@@ -2783,20 +2834,16 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
         const int columns = page == settings_page::workplace ? 5 : 4;
         crafting_uimenu menu( columns );
         menu.set_title( _( "制造设置" ) );
-        if( page == settings_page::crafter ) {
-            menu.set_preamble( _( "〈 制作者 〉　工作地点　制造清单" ) );
-        } else if( page == settings_page::workplace ) {
-            menu.set_preamble( _( "制作者　〈 工作地点 〉　制造清单" ) );
-        } else {
-            menu.set_preamble( _( "制作者　工作地点　〈 制造清单 〉" ) );
-        }
+        menu.set_tabs( { _( "制作者" ), _( "工作地点" ), _( "制造清单" ) },
+                       static_cast<int>( page ) );
 
         if( page == settings_page::crafter ) {
+            menu.set_column_weights( { 34, 14, 28, 24 } );
             menu.set_header( { _( "制作者" ), _( "可制作" ), _( "缺少" ), _( "状态" ) } );
             const std::optional<tripoint> effective = resolve_crafting_workplace(
                         selected_crafter, workplace );
             menu.set_footer( string_format(
-                                 _( "左右方向键切换分页，回车选择，Esc返回。当前工作地点：%s" ),
+                                 _( "Tab／Shift+Tab切换分页，回车选择，Esc返回。当前工作地点：%s" ),
                                  selected_workplace_text( selected_crafter, workplace,
                                          effective ) ) );
 
@@ -2821,11 +2868,12 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
             }
             menu.set_selected( crafter_selected_row );
         } else if( page == settings_page::workplace ) {
+            menu.set_column_weights( { 24, 10, 22, 18, 26 } );
             const std::string crafter_name = selected_crafter.is_avatar() ? _( "你" ) :
                                              selected_crafter.get_name();
             menu.set_header( { _( "工作地点" ), _( "可制作" ), _( "缺少" ),
                                string_format( _( "距%s" ), crafter_name ), _( "说明" ) } );
-            menu.set_footer( _( "左右方向键切换分页，回车选择，Esc返回。蓝色名称表示已标记工作台。" ) );
+            menu.set_footer( _( "Tab／Shift+Tab切换分页，回车选择，Esc返回。蓝色名称表示已标记工作台。" ) );
 
             const npc *selected_npc = selected_crafter.as_npc();
             const std::optional<tripoint> queue_location = selected_npc ?
@@ -2854,14 +2902,15 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
             }
             menu.set_selected( workplace_selected_row );
         } else {
+            menu.set_column_weights( { 10, 50, 12, 28 } );
             menu.set_header( { _( "顺序" ), _( "制造项目" ), _( "批量" ), _( "状态" ) } );
             npc *selected_npc = selected_crafter.as_npc();
             if( selected_npc == nullptr ) {
-                menu.set_footer( _( "制造清单目前只用于NPC盟友。左右方向键切换分页，Esc返回。" ) );
+                menu.set_footer( _( "制造清单目前只用于NPC盟友。Tab／Shift+Tab切换分页，Esc返回。" ) );
                 menu.addentry( 3999, false, { "-", _( "请选择一名NPC制作者" ), "-", "-" } );
             } else {
                 std::vector<item_location> queue = crafting_queue_items( *selected_npc, workplace );
-                menu.set_footer( _( "回车管理项目，上下选择，左右方向键切换分页，Esc返回。" ) );
+                menu.set_footer( _( "回车管理项目，上下选择，Tab／Shift+Tab切换分页，Esc返回。" ) );
                 if( queue.empty() ) {
                     menu.addentry( 3999, false, { "-", _( "制造清单为空，按q从配方列表加入" ),
                                                  "-", _( "空闲" ) } );
@@ -2886,8 +2935,11 @@ static bool choose_crafting_settings( const std::vector<Character *> &crafting_g
 
         const crafting_uimenu::query_result result = menu.query( true );
         if( result.retval == UILIST_ADDITIONAL &&
-            ( result.action == "UILIST.LEFT" || result.action == "UILIST.RIGHT" ) ) {
-            const int direction = result.action == "UILIST.RIGHT" ? 1 : -1;
+            ( result.action == "PREV_TAB" || result.action == "NEXT_TAB" ||
+              result.action == "UILIST.LEFT" || result.action == "UILIST.RIGHT" ) ) {
+            const bool next_page = result.action == "NEXT_TAB" ||
+                                   result.action == "UILIST.RIGHT";
+            const int direction = next_page ? 1 : -1;
             int page_index = static_cast<int>( page );
             page_index = ( page_index + direction + 3 ) % 3;
             if( page == settings_page::crafter ) {
