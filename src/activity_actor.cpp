@@ -143,6 +143,7 @@ static const activity_id ACT_VEHICLE_FOLD( "ACT_VEHICLE_FOLD" );
 static const activity_id ACT_VEHICLE_UNFOLD( "ACT_VEHICLE_UNFOLD" );
 static const activity_id ACT_WEAR( "ACT_WEAR" );
 static const activity_id ACT_WIELD( "ACT_WIELD" );
+static const activity_id ACT_WAIT( "ACT_WAIT" );
 static const activity_id ACT_WORKOUT_ACTIVE( "ACT_WORKOUT_ACTIVE" );
 static const activity_id ACT_WORKOUT_HARD( "ACT_WORKOUT_HARD" );
 static const activity_id ACT_WORKOUT_LIGHT( "ACT_WORKOUT_LIGHT" );
@@ -150,6 +151,7 @@ static const activity_id ACT_WORKOUT_MODERATE( "ACT_WORKOUT_MODERATE" );
 
 static const ammotype ammo_plutonium( "plutonium" );
 
+static const efftype_id effect_alarm_clock( "alarm_clock" );
 static const efftype_id effect_docile( "docile" );
 static const efftype_id effect_paid( "paid" );
 static const efftype_id effect_pet( "pet" );
@@ -3008,6 +3010,88 @@ std::unique_ptr<activity_actor> unload_activity_actor::deserialize( JsonValue &j
     return actor.clone();
 }
 
+namespace
+{
+enum class unattended_action : int {
+    wait = 0,
+    leave = 1,
+    alarm_finish = 2,
+    alarm_early = 3
+};
+
+static unattended_action query_unattended_action( Character &crafter, const item &craft )
+{
+    const bool can_alarm = crafter.has_alarm_clock();
+    const bool can_early_alarm = can_alarm && craft.unattended_craft_time_remaining() > 5_minutes;
+
+    uilist menu;
+    if( crafter.has_watch() ) {
+        menu.text = string_format( _( "无人值守工序已经开始。\n预计%s完成。" ),
+                                   to_string_time_of_day( craft.unattended_craft_ready_at() ) );
+        if( craft.unattended_craft_fail_at() ) {
+            menu.text += string_format( _( " 最迟应在%s前处理。" ),
+                                        to_string_time_of_day( *craft.unattended_craft_fail_at() ) );
+        }
+    } else {
+        menu.text = string_format( _( "无人值守工序已经开始，需要等待%s。" ),
+                                   to_string( craft.unattended_craft_time_remaining() ) );
+        if( craft.unattended_craft_fail_at() ) {
+            menu.text += string_format( _( " 最迟处理时间为开始后的%s。" ),
+                                        to_string( craft.unattended_craft_safe_time_remaining() ) );
+        }
+    }
+    if( can_alarm && crafter.has_effect( effect_alarm_clock ) ) {
+        menu.text += _( "\n设置新闹钟会替换当前闹钟。" );
+    }
+
+    menu.addentry( static_cast<int>( unattended_action::wait ), true, 'w',
+                   _( "原地等待工序完成" ) );
+    menu.addentry( static_cast<int>( unattended_action::leave ), true, 'd',
+                   _( "离开并处理其他事情" ) );
+    menu.addentry( static_cast<int>( unattended_action::alarm_finish ), can_alarm, 'a',
+                   can_alarm ? _( "完成时响铃并离开" ) :
+                   _( "完成时响铃，需要手表、手机或其他闹钟" ) );
+    menu.addentry( static_cast<int>( unattended_action::alarm_early ), can_early_alarm, '5',
+                   can_early_alarm ? _( "提前5分钟响铃并离开" ) :
+                   _( "提前5分钟响铃，需要闹钟且等待时间超过5分钟" ) );
+    menu.query();
+
+    switch( menu.ret ) {
+        case static_cast<int>( unattended_action::wait ):
+            return unattended_action::wait;
+        case static_cast<int>( unattended_action::alarm_finish ):
+            return unattended_action::alarm_finish;
+        case static_cast<int>( unattended_action::alarm_early ):
+            return unattended_action::alarm_early;
+        case UILIST_CANCEL:
+        case static_cast<int>( unattended_action::leave ):
+        default:
+            return unattended_action::leave;
+    }
+}
+
+static void apply_unattended_action( Character &crafter, const item &craft,
+                                     unattended_action action )
+{
+    if( action == unattended_action::wait ) {
+        player_activity wait_act( ACT_WAIT,
+                                  100 * to_turns<int>( craft.unattended_craft_time_remaining() ), 0 );
+        crafter.assign_activity( wait_act, false );
+        return;
+    }
+
+    if( action == unattended_action::alarm_finish || action == unattended_action::alarm_early ) {
+        time_duration alarm_after = craft.unattended_craft_time_remaining();
+        if( action == unattended_action::alarm_early ) {
+            alarm_after -= 5_minutes;
+        }
+        crafter.remove_effect( effect_alarm_clock );
+        crafter.add_effect( effect_alarm_clock, alarm_after );
+        crafter.add_msg_if_player( _( "你设置好了无人值守工序的闹钟。" ) );
+    }
+}
+} // namespace
+
 craft_activity_actor::craft_activity_actor( item_location &it, const bool is_long ) :
     craft_item( it ), is_long( is_long )
 {
@@ -3040,6 +3124,32 @@ bool craft_activity_actor::check_if_craft_okay( item_location &craft_item, Chara
         return false;
     }
 
+    if( craft->unattended_craft_waiting() ) {
+        const recipe_unattended_data &data = craft->get_making().unattended_craft();
+        if( craft->unattended_craft_has_failed() ) {
+            crafter.add_msg_player_or_npc(
+                data.failure_message.empty() ?
+                _( "无人看守的工序拖得太久，这份半成品已经损坏。" ) :
+                data.failure_message.translated(),
+                _( "<npcname>无人照看的半成品已经损坏。" ) );
+            craft_item.remove_item();
+            return false;
+        }
+        if( !craft->unattended_craft_is_ready() ) {
+            crafter.add_msg_player_or_npc(
+                _( "这道工序还需要等待 %s。" ),
+                _( "<npcname>检查了半成品，但这道工序仍需等待 %s。" ),
+                to_string( craft->unattended_craft_time_remaining() ) );
+            return false;
+        }
+        craft->finish_unattended_craft();
+        crafter.add_msg_player_or_npc(
+            data.ready_message.empty() ?
+            _( "无人看守的工序已经完成，你可以继续制作。" ) :
+            data.ready_message.translated(),
+            _( "<npcname>回来继续处理已经完成等待的半成品。" ) );
+    }
+
     if( !cached_continuation_requirements ) {
         cached_continuation_requirements = craft->get_continue_reqs();
     }
@@ -3050,6 +3160,7 @@ void craft_activity_actor::start( player_activity &act, Character &crafter )
 {
     if( !check_if_craft_okay( craft_item, crafter ) ) {
         act.set_to_null();
+        return;
     }
     activity_override = craft_item.get_item()->get_making().exertion_level();
     cached_crafting_speed = 0;
@@ -3131,6 +3242,17 @@ void craft_activity_actor::do_turn( player_activity &act, Character &crafter )
     // This is to ensure we don't over count skill steps
     craft.item_counter = std::min( craft.item_counter, 10'000'000 );
 
+    bool reached_unattended = false;
+    int unattended_counter = 0;
+    if( rec.has_unattended_craft() && !craft.unattended_craft_started() ) {
+        unattended_counter = rec.unattended_craft().start_at * 100'000;
+        if( old_counter == unattended_counter ||
+            ( old_counter < unattended_counter && craft.item_counter >= unattended_counter ) ) {
+            craft.item_counter = unattended_counter;
+            reached_unattended = true;
+        }
+    }
+
     // This nominal craft time is also how many practice ticks to perform
     // spread out evenly across the actual duration.
     const double total_practice_ticks = rec.time_to_craft_moves( crafter,
@@ -3195,7 +3317,9 @@ void craft_activity_actor::do_turn( player_activity &act, Character &crafter )
         if( level_up && craft.get_making().is_practice() &&
             query_yn( _( "Your proficiency has increased.  Stop practicing?" ) ) ) {
             crafter.cancel_activity();
-        } else if( craft.item_counter >= craft.get_next_failure_point() ) {
+            return;
+        }
+        if( craft.item_counter >= craft.get_next_failure_point() ) {
             bool destroy = craft.handle_craft_failure( crafter );
             // If the craft needs to be destroyed, do it and stop crafting.
             if( destroy ) {
@@ -3203,7 +3327,26 @@ void craft_activity_actor::do_turn( player_activity &act, Character &crafter )
                                                _( "There is nothing left of the %s <npcname> was crafting." ), craft.tname() );
                 craft_item.remove_item();
                 crafter.cancel_activity();
+                return;
             }
+        }
+        if( reached_unattended && craft.item_counter >= unattended_counter ) {
+            const recipe_unattended_data &data = rec.unattended_craft();
+            craft.start_unattended_craft();
+            crafter.add_msg_player_or_npc(
+                data.start_message.empty() ?
+                _( "你完成了需要亲手处理的部分，接下来的工序可以无人看守。" ) :
+                data.start_message.translated(),
+                _( "<npcname>完成了需要亲手处理的部分，接下来的工序可以无人看守。" ) );
+
+            const unattended_action next_action = crafter.is_avatar() ?
+                                                    query_unattended_action( crafter, craft ) :
+                                                    unattended_action::leave;
+            crafter.cancel_activity();
+            if( crafter.is_avatar() ) {
+                apply_unattended_action( crafter, craft, next_action );
+            }
+            return;
         }
     }
 }

@@ -42,6 +42,31 @@ static const itype_id itype_hotplate( "hotplate" );
 static const itype_id itype_null("null");
 recipe::recipe() : skill_used( skill_id::NULL_ID() ) {}
 
+
+void recipe_unattended_data::load( const JsonObject &jo )
+{
+    start_at = jo.get_int( "start_at" );
+    duration = read_from_json_string<time_duration>( jo.get_member( "time" ),
+               time_duration::units );
+    if( jo.has_member( "max_time" ) ) {
+        max_time = read_from_json_string<time_duration>( jo.get_member( "max_time" ),
+                   time_duration::units );
+    }
+    jo.read( "start_message", start_message );
+    jo.read( "ready_message", ready_message );
+    jo.read( "failure_message", failure_message );
+
+    if( start_at <= 0 || start_at >= 100 ) {
+        jo.throw_error_at( "start_at", "unattended start_at must be between 1 and 99" );
+    }
+    if( duration <= 0_turns ) {
+        jo.throw_error_at( "time", "unattended time must be greater than zero" );
+    }
+    if( max_time && *max_time <= duration ) {
+        jo.throw_error_at( "max_time", "unattended max_time must be greater than time" );
+    }
+}
+
 int recipe::get_difficulty( const Character &crafter ) const
 {
     if( is_practice() && skill_used ) {
@@ -200,6 +225,12 @@ void recipe::load( const JsonObject &jo, const std::string &src )
     }
     assign( jo, "difficulty", difficulty, strict, 0, MAX_SKILL );
     assign( jo, "flags", flags );
+
+    if( jo.has_object( "unattended" ) ) {
+        recipe_unattended_data data;
+        data.load( jo.get_object( "unattended" ) );
+        unattended_craft_ = std::move( data );
+    }
 
     // automatically set contained if we specify as container
     assign( jo, "contained", contained, strict );

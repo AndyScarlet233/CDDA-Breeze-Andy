@@ -948,8 +948,13 @@ static std::vector<std::string> recipe_info(
         if( speed > 0.0f ) {
             const int expected_turns = recp.batch_time( guy, batch_size, speed, assistants ) /
                                        to_moves<int>( 1_turns );
-            oss << string_format( _( "Time to complete: <color_cyan>%s</color>\n" ),
-                                  to_string( time_duration::from_turns( expected_turns ) ) );
+            if( recp.has_unattended_craft() ) {
+                oss << string_format( _( "需要亲手操作的时间：<color_cyan>%s</color>\n" ),
+                                      to_string( time_duration::from_turns( expected_turns ) ) );
+            } else {
+                oss << string_format( _( "Time to complete: <color_cyan>%s</color>\n" ),
+                                      to_string( time_duration::from_turns( expected_turns ) ) );
+            }
         } else {
             oss << _( "完成时间：<color_red>无法制作</color>\n" );
         }
@@ -959,6 +964,16 @@ static std::vector<std::string> recipe_info(
     const std::string batch_savings = recp.batch_savings_string();
     if( !batch_savings.empty() ) {
         oss << string_format( _( "Batch time savings: <color_cyan>%s</color>\n" ), batch_savings );
+    }
+
+    if( recp.has_unattended_craft() ) {
+        const recipe_unattended_data &data = recp.unattended_craft();
+        oss << string_format( _( "无人值守工序：制作至 <color_cyan>%d%%</color> 后等待 <color_cyan>%s</color>\n" ),
+                              data.start_at, to_string( data.duration ) );
+        if( data.max_time ) {
+            oss << string_format( _( "最迟处理时间：<color_cyan>%s</color>\n" ),
+                                  to_string( *data.max_time ) );
+        }
     }
 
     oss << string_format( _( "Activity level: <color_cyan>%s</color>\n" ),
