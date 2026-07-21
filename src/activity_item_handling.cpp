@@ -139,6 +139,7 @@ static const zone_type_id zone_type_LOOT_WOOD( "LOOT_WOOD" );
 static const zone_type_id zone_type_MINING( "MINING" );
 static const zone_type_id zone_type_MOPPING( "MOPPING" );
 static const zone_type_id zone_type_SOURCE_FIREWOOD( "SOURCE_FIREWOOD" );
+static const std::string var_craft_queue_paused( "craft_queue_paused" );
 
 static bool craft_is_assigned_to( const item &craft, const npc &who )
 {
@@ -1559,12 +1560,19 @@ static activity_reason_info can_do_activity_there( const activity_id &act, Chara
                     r.simple_requirements().get_qualities();
                 std::vector<std::vector<tool_comp>> tool_comp_vector = r.simple_requirements().get_tools();
                 requirement_data req = requirement_data(tool_comp_vector, quality_comp_vector, item_comp_vector);
-                if (req.can_make_with_inventory(inv, is_crafting_component)) {
-                    return activity_reason_info::ok(do_activity_reason::NEEDS_CRAFT);
+                const std::function<bool( const item & )> no_rotten_filter =
+                    r.get_component_filter( recipe_filter_flags::no_rotten );
+                const std::function<bool( const item & )> no_favorite_filter =
+                    r.get_component_filter( recipe_filter_flags::no_favorite );
+                const auto safe_component_filter = [&]( const item & it ) {
+                    return is_crafting_component( it ) && no_rotten_filter( it ) &&
+                           no_favorite_filter( it ) &&
+                           ( it.is_container_empty() || !it.is_watertight_container() );
+                };
+                if( req.can_make_with_inventory( inv, safe_component_filter ) ) {
+                    return activity_reason_info::ok( do_activity_reason::NEEDS_CRAFT );
                 }
-                else {
-                    return activity_reason_info(do_activity_reason::NEEDS_CRAFT, false, req);
-                }
+                return activity_reason_info( do_activity_reason::NEEDS_CRAFT, false, req );
             }
         }
         return activity_reason_info::fail(do_activity_reason::ALREADY_DONE);
@@ -3005,6 +3013,26 @@ static requirement_check_result generic_multi_activity_check_requirement(
     if( can_do_it ) {
         return requirement_check_result::CAN_DO_LOCATION;
     }
+    if( act_id == ACT_MULTIPLE_CRAFT && reason == do_activity_reason::NEEDS_CRAFT ) {
+        if( !check_only ) {
+            if( npc *p = you.as_npc() ) {
+                item_location queued_craft = item_to_craft_at( *p, src_loc );
+                if( queued_craft &&
+                    queued_craft->get_var( var_craft_queue_paused, 0 ) == 0 ) {
+                    queued_craft->set_var( var_craft_queue_paused, 1 );
+                    you.add_msg_player_or_npc(
+                        m_bad,
+                        _( "制造清单缺少继续制作所需的材料或工具，已暂停等待补充。" ),
+                        _( "制造清单缺少继续制作所需的材料或工具，<npcname>暂停等待补充。" ) );
+                    const std::string missing = act_info.req.list_missing();
+                    if( !missing.empty() ) {
+                        add_msg( m_bad, missing );
+                    }
+                }
+            }
+        }
+        return requirement_check_result::SKIP_LOCATION;
+    }
     if( reason == do_activity_reason::DONT_HAVE_SKILL ||
         reason == do_activity_reason::NO_ZONE ||
         reason == do_activity_reason::ALREADY_DONE ||
@@ -3360,9 +3388,17 @@ static bool generic_multi_activity_do(
                                            _( "这里太暗，<npcname>无法继续制作。" ) );
                 return true;
             }
+            const bool was_paused = to_craft->get_var( var_craft_queue_paused, 0 ) != 0;
             player_activity craft_act = player_activity( craft_activity_actor( to_craft, false ) );
             you.assign_activity( craft_act );
             you.backlog.emplace_front( ACT_MULTIPLE_CRAFT );
+            if( was_paused && you.activity ) {
+                to_craft->erase_var( var_craft_queue_paused );
+                you.add_msg_player_or_npc(
+                    m_info,
+                    _( "制造清单所需材料和工具已经补齐，继续制作。" ),
+                    _( "制造清单所需材料和工具已经补齐，<npcname>继续制作。" ) );
+            }
             you.backlog.front().placement = here.getglobal( src_loc );
             you.backlog.front().auto_resume = true;
             return false;
@@ -3495,6 +3531,15 @@ bool generic_multi_activity_handler( player_activity &act, Character &you, bool 
         const requirement_check_result req_res = generic_multi_activity_check_requirement(
                     you, activity_to_restore, act_info, src, src_loc, src_set, check_only );
         if( req_res == requirement_check_result::SKIP_LOCATION ) {
+            if( activity_to_restore == ACT_MULTIPLE_CRAFT &&
+                act_info.reason == do_activity_reason::NEEDS_CRAFT ) {
+                if( check_only ) {
+                    return true;
+                }
+                you.assign_activity( restored_activity() );
+                you.set_moves( 0 );
+                return false;
+            }
             continue;
         } else if( req_res == requirement_check_result::RETURN_EARLY ) {
             return true;

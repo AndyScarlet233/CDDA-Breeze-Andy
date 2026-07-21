@@ -1898,19 +1898,28 @@ bool Character::can_continue_craft( item &craft, const requirement_data &continu
                 popup(buffer, PF_NONE);
             }
             else {
-                add_msg_if_npc(_("<npcname> don't have the required components to continue crafting!"));
+                add_msg_if_npc( _( "<npcname>缺少继续制作所需的材料。" ) );
             }
             return false;
         }
 
-        std::string buffer = _( "Consume the missing components and continue crafting?" );
-        buffer += "\n";
-        buffer += continue_reqs.list_all();
-        if( !query_yn( buffer ) ) {
-            return false;
+        const bool automatic_npc_craft = is_npc();
+        if( !automatic_npc_craft ) {
+            std::string buffer = _( "Consume the missing components and continue crafting?" );
+            buffer += "\n";
+            buffer += continue_reqs.list_all();
+            if( !query_yn( buffer ) ) {
+                return false;
+            }
         }
 
         if( !continue_reqs.can_make_with_inventory( crafting_inventory(), no_rotten_filter, batch_size ) ) {
+            if( automatic_npc_craft ) {
+                add_msg_if_player_sees( pos(), m_bad,
+                                        _( "%s附近只有腐烂材料，自动制造不会使用这些材料。" ),
+                                        get_name() );
+                return false;
+            }
             if( !query_yn( _( "Some components required to continue are rotten.\n"
                               "Continue crafting anyway?" ) ) ) {
                 return false;
@@ -1920,6 +1929,12 @@ bool Character::can_continue_craft( item &craft, const requirement_data &continu
 
         if( !continue_reqs.can_make_with_inventory( crafting_inventory(), no_favorite_filter,
                 batch_size ) ) {
+            if( automatic_npc_craft ) {
+                add_msg_if_player_sees( pos(), m_bad,
+                                        _( "%s附近只有收藏材料，自动制造不会使用这些材料。" ),
+                                        get_name() );
+                return false;
+            }
             if( !query_yn( _( "Some components required to continue are favorite.\n"
                               "Continue crafting anyway?" ) ) ) {
                 return false;
@@ -1955,6 +1970,10 @@ bool Character::can_continue_craft( item &craft, const requirement_data &continu
         for( const auto &it : item_selections ) {
             craft.components.splice( craft.components.end(), consume_items( it, batch_size, filter ) );
         }
+        if( automatic_npc_craft ) {
+            add_msg_if_player_sees( pos(), m_info,
+                                    _( "%s补充了缺失材料并继续制作。" ), get_name() );
+        }
     }
 
     if( !craft.has_tools_to_continue() ) {
@@ -1989,7 +2008,7 @@ bool Character::can_continue_craft( item &craft, const requirement_data &continu
                 popup(buffer, PF_NONE);
             }
             else {
-                add_msg_if_npc(_("<npcname> don't have the necessary tools to continue crafting!"));
+                add_msg_if_npc( _( "<npcname>缺少继续制作所需的工具。" ) );
             }
             return false;
         }
@@ -2167,6 +2186,9 @@ comp_selection<item_comp> Character::select_item_component( const std::vector<it
         } else if( !map_has.empty() ) {
             selected.use_from = usage_from::map;
             selected.comp = map_has[0].first;
+        } else if( !mixed.empty() ) {
+            selected.use_from = usage_from::both;
+            selected.comp = mixed[0].first;
         } else {
             debugmsg( "Attempted a recipe with no available components!" );
             selected.use_from = usage_from::cancel;
