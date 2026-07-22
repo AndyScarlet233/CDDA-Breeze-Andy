@@ -2,16 +2,6 @@ name: 构建微风指南安卓安装包
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - test/next-release
-    paths:
-      - ".github/workflows/breeze-guide-android.yml"
-      - "breeze_guide/**"
-      - "data/json/**"
-      - "data/mods/**"
-      - "lang/po/zh_CN.po"
-
 permissions:
   contents: read
 
