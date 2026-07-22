@@ -948,8 +948,13 @@ static std::vector<std::string> recipe_info(
         if( speed > 0.0f ) {
             const int expected_turns = recp.batch_time( guy, batch_size, speed, assistants ) /
                                        to_moves<int>( 1_turns );
-            oss << string_format( _( "Time to complete: <color_cyan>%s</color>\n" ),
-                                  to_string( time_duration::from_turns( expected_turns ) ) );
+            if( recp.has_unattended_craft() ) {
+                oss << string_format( _( "操作时间：<color_cyan>%s</color>\n" ),
+                                      to_string( time_duration::from_turns( expected_turns ) ) );
+            } else {
+                oss << string_format( _( "Time to complete: <color_cyan>%s</color>\n" ),
+                                      to_string( time_duration::from_turns( expected_turns ) ) );
+            }
         } else {
             oss << _( "完成时间：<color_red>无法制作</color>\n" );
         }
@@ -959,6 +964,21 @@ static std::vector<std::string> recipe_info(
     const std::string batch_savings = recp.batch_savings_string();
     if( !batch_savings.empty() ) {
         oss << string_format( _( "Batch time savings: <color_cyan>%s</color>\n" ), batch_savings );
+    }
+
+    if( recp.has_unattended_craft() ) {
+        const recipe_unattended_data &data = recp.unattended_craft();
+        std::string unattended_info = string_format(
+                                          _( "无人值守：<color_cyan>%d%%</color> 后等待 <color_cyan>%s</color>" ),
+                                          data.start_at, to_string( data.duration ) );
+        if( data.check_environment ) {
+            unattended_info += _( "，条件中断暂停" );
+        }
+        if( data.max_time ) {
+            unattended_info += string_format( _( "，最迟 <color_cyan>%s</color> 内处理" ),
+                                               to_string( *data.max_time ) );
+        }
+        oss << unattended_info << _( "。\n" );
     }
 
     oss << string_format( _( "Activity level: <color_cyan>%s</color>\n" ),

@@ -128,6 +128,7 @@ static const activity_id ACT_GAME( "ACT_GAME" );
 static const activity_id ACT_GENERIC_GAME( "ACT_GENERIC_GAME" );
 static const activity_id ACT_HAND_CRANK( "ACT_HAND_CRANK" );
 static const activity_id ACT_HEATING( "ACT_HEATING" );
+static const activity_id ACT_WAIT( "ACT_WAIT" );
 static const activity_id ACT_JACKHAMMER( "ACT_JACKHAMMER" );
 static const activity_id ACT_PICKAXE( "ACT_PICKAXE" );
 static const activity_id ACT_ROBOT_CONTROL( "ACT_ROBOT_CONTROL" );
@@ -150,6 +151,7 @@ static const construction_str_id construction_constr_pit_shallow( "constr_pit_sh
 static const construction_str_id construction_constr_water_channel( "constr_water_channel" );
 
 static const efftype_id effect_adrenaline( "adrenaline" );
+static const efftype_id effect_alarm_clock( "alarm_clock" );
 static const efftype_id effect_antibiotic( "antibiotic" );
 static const efftype_id effect_antibiotic_visible( "antibiotic_visible" );
 static const efftype_id effect_antifungal( "antifungal" );
@@ -9128,7 +9130,7 @@ static item *wield_before_use( Character *const p, item *const it, const std::st
     return it;
 }
 
-std::optional<int> iuse::craft( Character *p, item *it, bool, const tripoint & )
+std::optional<int> iuse::craft( Character *p, item *it, bool, const tripoint &pos )
 {
     if( p->is_mounted() ) {
         p->add_msg_if_player( m_info, _( "You can't do that while mounted." ) );
@@ -9144,6 +9146,77 @@ std::optional<int> iuse::craft( Character *p, item *it, bool, const tripoint & )
     if( !it->is_craft() ) {
         debugmsg( "Attempted to start working on non craft '%s.'  Aborting.", craft_name );
         return std::nullopt;
+    }
+
+    if( it->unattended_craft_waiting() ) {
+        it->update_unattended_craft_environment( get_map(), p, pos );
+        const recipe_unattended_data &data = it->get_making().unattended_craft();
+        if( it->unattended_craft_is_paused() ) {
+            p->add_msg_if_player( m_warning,
+                                  _( "无人值守工序已暂停，还需%s。缺少所需工具或环境条件。" ),
+                                  to_string( it->unattended_craft_time_remaining() ) );
+            return 0;
+        }
+        if( it->unattended_craft_has_failed() ) {
+            p->add_msg_if_player(
+                m_bad, data.failure_message.empty() ?
+                _( "无人看守的工序拖得太久，这份半成品已经损坏。" ) :
+                data.failure_message.translated() );
+            item_location craft_loc( *p, it );
+            craft_loc.remove_item();
+            return 0;
+        }
+        if( !it->unattended_craft_is_ready() ) {
+            const time_duration remaining = it->unattended_craft_time_remaining();
+            uilist menu;
+            menu.text = string_format( _( "这道工序还需要等待%s。" ), to_string( remaining ) );
+            if( p->has_watch() ) {
+                menu.text += string_format( _( " 预计%s完成。" ),
+                                            to_string_time_of_day( it->unattended_craft_ready_at() ) );
+                if( it->unattended_craft_fail_at() ) {
+                    menu.text += string_format( _( " 最迟应在%s前处理。" ),
+                                                to_string_time_of_day( *it->unattended_craft_fail_at() ) );
+                }
+            }
+            if( p->has_alarm_clock() && p->has_effect( effect_alarm_clock ) ) {
+                menu.text += _( "\n设置新闹钟会替换当前闹钟。" );
+            }
+
+            menu.addentry( 0, true, 'd', _( "暂时离开" ) );
+            menu.addentry( 1, true, 'w', _( "原地等待工序完成" ) );
+            menu.addentry( 2, p->has_alarm_clock(), 'a',
+                           p->has_alarm_clock() ? _( "完成时响铃" ) :
+                           _( "完成时响铃，需要手表、手机或其他闹钟" ) );
+            menu.addentry( 3, p->has_alarm_clock() && remaining > 5_minutes, '5',
+                           p->has_alarm_clock() && remaining > 5_minutes ?
+                           _( "提前5分钟响铃" ) :
+                           _( "提前5分钟响铃，需要闹钟且剩余时间超过5分钟" ) );
+            menu.query();
+
+            if( menu.ret == 1 ) {
+                player_activity wait_act( ACT_WAIT, 100 * to_turns<int>( remaining ), 0 );
+                p->assign_activity( wait_act, false );
+            } else if( menu.ret == 2 || menu.ret == 3 ) {
+                time_duration alarm_after = remaining;
+                if( menu.ret == 3 ) {
+                    alarm_after -= 5_minutes;
+                }
+                p->remove_effect( effect_alarm_clock );
+                p->add_effect( effect_alarm_clock, alarm_after );
+                p->add_msg_if_player( m_good, _( "你设置好了无人值守工序的闹钟。" ) );
+            }
+            return 0;
+        }
+        const time_duration safe_time = it->unattended_craft_safe_time_remaining();
+        const bool has_deadline = it->unattended_craft_fail_at().has_value();
+        it->finish_unattended_craft();
+        p->add_msg_if_player( m_good, data.ready_message.empty() ?
+                              _( "无人看守的工序已经完成，你可以继续制作。" ) :
+                              data.ready_message.translated() );
+        if( has_deadline ) {
+            p->add_msg_if_player( m_info, _( "这份半成品还可安全等待%s。" ),
+                                  to_string( safe_time ) );
+        }
     }
 
     if( !p->can_continue_craft( *it ) ) {

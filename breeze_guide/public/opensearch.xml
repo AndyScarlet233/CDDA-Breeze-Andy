@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
-  <ShortName>BG</ShortName>
-  <LongName>Breeze Guide</LongName>
-  <Description>搜索 Cataclysm: Dark Days Ahead 游戏数据</Description>
-  <Url type="text/html" method="get" template="/search/{searchTerms}"/>
-  <Image height="16" width="16" type="image/png">/favicon.png</Image>
-  <Image height="192" width="192" type="image/png">/icon-192.png</Image>
-  <Query role="example" searchTerms="flashlight" />
+  <ShortName>微风指南</ShortName>
+  <LongName>CDDA-Breeze 微风指南</LongName>
+  <Description>搜索 CDDA-Breeze 本体与维护者批准模组的游戏数据</Description>
+  <Url type="text/html" method="get" template="/CDDA-Breeze-Andy/search/{searchTerms}"/>
+  <Image height="16" width="16" type="image/png">/CDDA-Breeze-Andy/favicon.png</Image>
+  <Image height="192" width="192" type="image/png">/CDDA-Breeze-Andy/icon-192.png</Image>
+  <Query role="example" searchTerms="手电筒" />
   <InputEncoding>UTF-8</InputEncoding>
   <OutputEncoding>UTF-8</OutputEncoding>
-  <Language>zh</Language>
+  <Language>zh-CN</Language>
 </OpenSearchDescription>

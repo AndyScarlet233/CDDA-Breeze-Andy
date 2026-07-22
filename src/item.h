@@ -2688,6 +2688,20 @@ class item : public visitable
         const recipe &get_making() const;
         int get_making_batch_size() const;
 
+        bool unattended_craft_started() const;
+        bool unattended_craft_waiting() const;
+        bool unattended_craft_is_ready() const;
+        bool unattended_craft_has_failed() const;
+        bool unattended_craft_is_paused() const;
+        time_point unattended_craft_ready_at() const;
+        std::optional<time_point> unattended_craft_fail_at() const;
+        time_duration unattended_craft_time_remaining() const;
+        time_duration unattended_craft_safe_time_remaining() const;
+        void start_unattended_craft();
+        void finish_unattended_craft();
+        void update_unattended_craft_environment( map &here, Character *carrier,
+                const tripoint &pos );
+
         /**
          * Get the failure point stored in this item.
          * returns INT_MAX if the failure point is unset.
@@ -2949,6 +2963,14 @@ class item : public visitable
                 std::vector<comp_selection<tool_comp>> cached_tool_selections;
                 std::optional<units::mass> cached_weight; // NOLINT(cata-serialize)
                 std::optional<units::volume> cached_volume; // NOLINT(cata-serialize)
+
+                bool unattended_started = false;
+                bool unattended_finished = false;
+                time_point unattended_ready_at = calendar::before_time_starts;
+                time_point unattended_fail_at = calendar::before_time_starts;
+                bool unattended_paused = false;
+                time_point unattended_pause_started_at = calendar::before_time_starts;
+                time_point unattended_env_check_at = calendar::before_time_starts;
 
                 // if this is an in progress disassembly as opposed to craft
                 bool disassembly = false;

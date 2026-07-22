@@ -16,7 +16,12 @@ if (location.hostname !== "localhost")
 
 // Only register service worker in browser (not in Capacitor native app)
 if (!(window as any).Capacitor?.isNativePlatform?.()) {
-  registerSW({});
+  const updateSW = registerSW({
+    immediate: true,
+    onNeedRefresh() {
+      void updateSW(true);
+    },
+  });
 }
 
 if (location.hash) {

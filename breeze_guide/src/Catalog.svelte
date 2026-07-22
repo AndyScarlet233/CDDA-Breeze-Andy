@@ -19,6 +19,8 @@ import ItemSymbol from "./types/item/ItemSymbol.svelte";
 import { groupBy } from "./types/item/utils";
 import ProficiencyList from "./types/ProficiencyList.svelte";
 import OvermapAppearance from "./types/item/OvermapAppearance.svelte";
+import SourceBadge from "./SourceBadge.svelte";
+import { guideTypeName } from "./界面名称";
 
 export let type: string;
 export let data: CddaData;
@@ -87,7 +89,7 @@ function isProficiency(t: SupportedTypeMapped): t is Proficiency {
 }
 </script>
 
-<h1>{type}</h1>
+<h1>{guideTypeName(type)}</h1>
 {#each groupsList as [groupName, group]}
   {#if type === "mutation" && groupName && data.byIdMaybe("mutation_category", groupName)}
     <MutationCategory
@@ -111,6 +113,7 @@ function isProficiency(t: SupportedTypeMapped): t is Proficiency {
             <OvermapAppearance overmapSpecial={item} />
           {/if}
           <ThingLink type={typeWithCorrectType} id={item.id} />
+          <SourceBadge {item} compact={true} />
         </LimitedList>
       {/if}
     </section>

@@ -2923,6 +2923,21 @@ void item::craft_data::serialize( JsonOut &jsout ) const
     jsout.member( "tools_to_continue", tools_to_continue );
     jsout.member( "batch_size", batch_size );
     jsout.member( "cached_tool_selections", cached_tool_selections );
+    jsout.member( "unattended_started", unattended_started );
+    jsout.member( "unattended_finished", unattended_finished );
+    if( unattended_ready_at != calendar::before_time_starts ) {
+        jsout.member( "unattended_ready_at", unattended_ready_at );
+    }
+    if( unattended_fail_at != calendar::before_time_starts ) {
+        jsout.member( "unattended_fail_at", unattended_fail_at );
+    }
+    jsout.member( "unattended_paused", unattended_paused );
+    if( unattended_pause_started_at != calendar::before_time_starts ) {
+        jsout.member( "unattended_pause_started_at", unattended_pause_started_at );
+    }
+    if( unattended_env_check_at != calendar::before_time_starts ) {
+        jsout.member( "unattended_env_check_at", unattended_env_check_at );
+    }
     jsout.end_object();
 }
 
@@ -2941,6 +2956,21 @@ void item::craft_data::deserialize( const JsonObject &obj )
     tools_to_continue = obj.get_bool( "tools_to_continue", false );
     batch_size = obj.get_int( "batch_size", -1 );
     obj.read( "cached_tool_selections", cached_tool_selections );
+    unattended_started = obj.get_bool( "unattended_started", false );
+    unattended_finished = obj.get_bool( "unattended_finished", false );
+    if( obj.has_member( "unattended_ready_at" ) ) {
+        obj.read( "unattended_ready_at", unattended_ready_at );
+    }
+    if( obj.has_member( "unattended_fail_at" ) ) {
+        obj.read( "unattended_fail_at", unattended_fail_at );
+    }
+    unattended_paused = obj.get_bool( "unattended_paused", false );
+    if( obj.has_member( "unattended_pause_started_at" ) ) {
+        obj.read( "unattended_pause_started_at", unattended_pause_started_at );
+    }
+    if( obj.has_member( "unattended_env_check_at" ) ) {
+        obj.read( "unattended_env_check_at", unattended_env_check_at );
+    }
 }
 
 void item::link_data::serialize(JsonOut& jsout) const

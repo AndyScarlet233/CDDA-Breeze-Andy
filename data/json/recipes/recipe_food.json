@@ -57,9 +57,17 @@
     "category": "CC_FOOD",
     "subcategory": "CSC_FOOD_DRINKS",
     "skill_used": "cooking",
-    "time": "5 m",
+    "time": "1 m",
     "autolearn": true,
     "batch_time_factors": [ 20, 1 ],
+    "unattended": {
+      "start_at": 50,
+      "time": "5 m",
+      "max_time": "30 m",
+      "start_message": "你把水放上热源，接下来可以暂时离开。",
+      "ready_message": "水已经煮沸，可以回来装好了。",
+      "failure_message": "锅里的水已经烧干，这份半成品无法挽救。"
+    },
     "qualities": [ { "id": "BOIL", "level": 1 } ],
     "tools": [ [ [ "water_boiling_heat", 3, "LIST" ] ] ],
     "components": [ [ [ "water", 1 ] ] ]
@@ -3250,10 +3258,18 @@
     "subcategory": "CSC_FOOD_VEGGI",
     "skill_used": "cooking",
     "difficulty": 2,
-    "time": "20 m",
+    "time": "6 m",
     "charges": 1,
     "autolearn": true,
     "batch_time_factors": [ 80, 4 ],
+    "unattended": {
+      "start_at": 50,
+      "time": "30 m",
+      "max_time": "90 m",
+      "start_message": "高汤已经开始慢炖，你可以先去处理别的事情。",
+      "ready_message": "高汤已经炖好，可以回来调味并装起。",
+      "failure_message": "高汤长时间无人照看，已经煮干烧坏了。"
+    },
     "qualities": [ { "id": "COOK", "level": 3 } ],
     "tools": [ [ [ "surface_heat", 5, "LIST" ] ] ],
     "using": [ [ "broth_ingredients", 1 ] ],
@@ -3316,10 +3332,18 @@
     "subcategory": "CSC_FOOD_MEAT",
     "skill_used": "cooking",
     "difficulty": 2,
-    "time": "20 m",
+    "time": "8 m",
     "charges": 2,
     "autolearn": true,
     "batch_time_factors": [ 80, 4 ],
+    "unattended": {
+      "start_at": 50,
+      "time": "30 m",
+      "max_time": "90 m",
+      "start_message": "肉汤已经转为小火慢炖，你可以暂时离开。",
+      "ready_message": "肉汤已经炖熟，可以回来完成最后的调味。",
+      "failure_message": "肉汤煮得太久，锅里的食物已经焦糊。"
+    },
     "qualities": [ { "id": "COOK", "level": 3 } ],
     "tools": [ [ [ "surface_heat", 5, "LIST" ] ] ],
     "using": [ [ "meat_soup_ingredients", 1 ] ]
@@ -3590,8 +3614,17 @@
     "skill_used": "cooking",
     "difficulty": 2,
     "charges": 10,
-    "time": "20 m",
+    "time": "10 m",
     "batch_time_factors": [ 50, 4 ],
+    "unattended": {
+      "start_at": 50,
+      "time": "10 m",
+      "max_time": "2 h",
+      "check_environment": false,
+      "start_message": "面团已经揉好，接下来只需要等待它发酵。",
+      "ready_message": "面团已经发好，可以继续烘烤了。",
+      "failure_message": "面团放得太久，已经发酵过头并彻底坏掉。"
+    },
     "book_learn": [
       [ "family_cookbook", 1 ],
       [ "baking_book", 1 ],

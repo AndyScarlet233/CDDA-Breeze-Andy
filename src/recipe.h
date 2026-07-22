@@ -82,6 +82,22 @@ struct practice_recipe_data {
     void deserialize( const JsonObject &jo );
 };
 
+/**
+ * 普通配方中的单个无人值守节点。
+ * 制作进度到达 start_at 后，半成品按照游戏时间等待，完成后才能继续制作。
+ */
+struct recipe_unattended_data {
+    int start_at = 0; // 百分比，不包含 0 和 100。
+    time_duration duration;
+    std::optional<time_duration> max_time;
+    bool check_environment = true;
+    translation start_message;
+    translation ready_message;
+    translation failure_message;
+
+    void load( const JsonObject &jo );
+};
+
 class recipe
 {
         friend class recipe_dictionary;
@@ -251,6 +267,14 @@ class recipe
 
         bool has_flag( const std::string &flag_name ) const;
 
+        bool has_unattended_craft() const {
+            return unattended_craft_.has_value();
+        }
+
+        const recipe_unattended_data &unattended_craft() const {
+            return unattended_craft_.value();
+        }
+
         bool is_reversible() const {
             return reversible;
         }
@@ -325,6 +349,9 @@ class recipe
         deduped_requirement_data deduped_requirements_;
 
         std::set<std::string> flags;
+
+        /** 轻量无人值守制作使用的可选节点。 */
+        std::optional<recipe_unattended_data> unattended_craft_;
 
         /** If set (zero or positive) set charges of output result for items counted by charges */
         std::optional<int> charges;

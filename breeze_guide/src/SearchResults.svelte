@@ -27,6 +27,8 @@ import {
   overmapAppearance,
 } from "./types/item/spawnLocations";
 import { isSpoilerItem } from "./spoilers";
+import SourceBadge from "./SourceBadge.svelte";
+import { guideTypeName } from "./界面名称";
 
 const SEARCHABLE_TYPES = new Set<keyof SupportedTypesWithMapped>([
   "item",
@@ -184,21 +186,23 @@ function groupByAppearance(results: SearchResult[]): OvermapSpecial[][] {
   {#each matchingObjectsList as [type, results]}
     {#if type === "overmap_special"}
       {@const grouped = groupByAppearance(results)}
-      <h1>location</h1>
+      <h1>{guideTypeName("overmap_special")}</h1>
       <LimitedTableList items={grouped} limit={50}>
         <tr slot="item" let:item={result}>
           <td style="text-align: center; padding-left: 2.5em;">
             <OvermapAppearance overmapSpecial={result[0]} />
           </td>
           <td style="vertical-align: middle; padding-left: 5px;">
-            <a href="/overmap_special/{result[0].id}{location.search}"
+            <a href="{import.meta.env.BASE_URL}overmap_special/{result[0].id}{location.search}"
               >{omsName(data, result[0])}</a
-            >{#if result.length > 1}{" "}({result.length} variants){/if}
+            >
+            <SourceBadge item={result[0]} compact={true} />
+            {#if result.length > 1}（{result.length} 种变体）{/if}
           </td>
         </tr>
       </LimitedTableList>
     {:else}
-      <h1>{type.replace(/_/g, " ")}</h1>
+      <h1>{guideTypeName(type)}</h1>
       <LimitedList items={results} let:item={result} limit={50}>
         {@const item = data._flatten(result.item)}
         <ItemSymbol {item} />
@@ -206,6 +210,7 @@ function groupByAppearance(results: SearchResult[]): OvermapSpecial[][] {
           type={mapType(result.item.type)}
           id={result.item.id}
           variantId={result.variant?.id} />
+        <SourceBadge {item} compact={true} />
         {#if /obsolet/.test(result.item.__filename ?? "")}
           <em style="color: var(--cata-color-gray)"
             >({t("obsolete", { _context: "Search Results" })})</em>
@@ -213,7 +218,7 @@ function groupByAppearance(results: SearchResult[]): OvermapSpecial[][] {
       </LimitedList>
     {/if}
   {:else}
-    <em>{t("No results.", { _context: "Search Results" })}</em>
+    <em>没有找到结果。</em>
   {/each}
 {:else if data || !$loadProgress}
   <pre>...</pre>

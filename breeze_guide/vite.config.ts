@@ -3,14 +3,22 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { svelteTesting } from "@testing-library/svelte/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import EnvironmentPlugin from "vite-plugin-environment";
+import { fileURLToPath, URL } from "node:url";
 
-// https://vitejs.dev/config/
+const base = process.env.BREEZE_GUIDE_BASE || "/";
+
 export default defineConfig({
-  base: "/",
+  base,
+  resolve: {
+    alias: {
+      "@transifex/native": fileURLToPath(
+        new URL("./src/界面翻译.ts", import.meta.url),
+      ),
+    },
+  },
   build: {
     sourcemap: true,
   },
-
   server: {
     port: 3000,
   },
@@ -27,9 +35,10 @@ export default defineConfig({
       },
       includeAssets: ["favicon.png"],
       manifest: {
-        short_name: "Breeze Guide",
-        name: "Breeze Guide",
-        description: "Cataclysm: Dark Days Ahead 游戏数据指南 — 搜索物品、怪物、家具等详细信息",
+        short_name: "微风指南",
+        name: "CDDA-Breeze 微风指南",
+        description:
+          "查询 CDDA-Breeze 本体与维护者审核模组中的物品、怪物、家具等游戏数据。",
         icons: [
           {
             src: "icon-192.png",
@@ -51,9 +60,24 @@ export default defineConfig({
         navigateFallback: "index.html",
         runtimeCaching: [
           {
-            urlPattern:
-              /\/data\/(all|zh_CN)\.json(\?.*)?$/,
+            urlPattern: /\/data\/(本体|模组)\/.*\.json(\?.*)?$/,
             handler: "CacheFirst",
+            options: {
+              cacheName: "微风指南数据包",
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+                purgeOnQuotaError: true,
+              },
+            },
+          },
+          {
+            urlPattern: /\/data\/(模组索引|构建信息|zh_CN)\.json(\?.*)?$/,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "微风指南索引",
+              networkTimeoutSeconds: 10,
+            },
           },
         ],
         skipWaiting: true,
