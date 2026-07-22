@@ -6055,23 +6055,31 @@ void item::component_info( std::vector<iteminfo> &info, const iteminfo_query *pa
         if( unattended_craft_waiting() ) {
             std::string status;
             if( unattended_craft_has_failed() ) {
-                status = _( "<bad>无人值守工序已经失败，这份半成品已损坏。</bad>" );
+                status = _( "<bad>无人值守：已经失败，这份半成品已损坏。</bad>" );
+            } else if( unattended_craft_is_paused() ) {
+                status = string_format( _( "无人值守：<bad>工序已暂停</bad>，还需 <info>%s</info>。\n"
+                                            "环境状态：缺少所需工具或环境条件。" ),
+                                        to_string( unattended_craft_time_remaining() ) );
             } else if( unattended_craft_is_ready() ) {
-                status = _( "<good>无人值守工序已经完成，可以继续制作。</good>" );
+                status = _( "<good>无人值守：工序已经完成，可以继续制作。</good>" );
                 if( unattended_craft_fail_at() ) {
-                    status += string_format( _( " 最迟还可等待 %s。" ),
+                    status += string_format( _( " 最迟还可等待 <info>%s</info>。" ),
                                              to_string( unattended_craft_safe_time_remaining() ) );
                 }
             } else {
-                status = string_format( _( "无人值守工序正在进行，还需 <info>%s</info>。" ),
+                status = string_format( _( "无人值守：还需 <info>%s</info>。" ),
                                         to_string( unattended_craft_time_remaining() ) );
                 if( get_player_character().has_watch() ) {
-                    status += string_format( _( " 预计 <info>%s</info> 完成。" ),
+                    status += string_format( _( " 预计 <info>%s</info> 完成" ),
                                              to_string_time_of_day( unattended_craft_ready_at() ) );
                     if( unattended_craft_fail_at() ) {
-                        status += string_format( _( " 最迟应在 <info>%s</info> 前处理。" ),
+                        status += string_format( _( "，最迟 <info>%s</info> 处理" ),
                                                  to_string_time_of_day( *unattended_craft_fail_at() ) );
                     }
+                    status += _( "。" );
+                }
+                if( get_making().unattended_craft().check_environment ) {
+                    status += _( "\n环境状态：所需工具与环境条件正常。" );
                 }
             }
             info.emplace_back( "DESCRIPTION", status );
@@ -15118,6 +15126,10 @@ bool item::process_internal( map &here, Character *carrier, const tripoint &pos,
         }
     }
 
+    if( active && unattended_craft_waiting() ) {
+        update_unattended_craft_environment( here, carrier, pos );
+    }
+
     // Remaining stuff is only done for active items.
     if( active ) {
 
@@ -15126,7 +15138,7 @@ bool item::process_internal( map &here, Character *carrier, const tripoint &pos,
             set_flag( flag_ITEM_BROKEN );
         }
 
-        if( !is_food() && item_counter > 0 ) {
+        if( !is_food() && !is_craft() && item_counter > 0 ) {
             item_counter--;
         }
 
@@ -15741,6 +15753,123 @@ int item::get_making_batch_size() const
     return craft_data_->batch_size;
 }
 
+namespace
+{
+Character *unattended_source_character( const item &craft, Character *carrier,
+                                        const tripoint &pos )
+{
+    if( carrier != nullptr ) {
+        return carrier;
+    }
+
+    avatar &you = get_avatar();
+    if( rl_dist( you.pos(), pos ) <= PICKUP_RANGE ) {
+        return &you;
+    }
+
+    const std::string assigned_crafter = craft.get_var( "crafter", "" );
+    if( assigned_crafter.empty() ) {
+        return nullptr;
+    }
+    for( npc &candidate : g->all_npcs() ) {
+        if( candidate.name == assigned_crafter &&
+            rl_dist( candidate.pos(), pos ) <= PICKUP_RANGE ) {
+            return &candidate;
+        }
+    }
+    return nullptr;
+}
+
+bool unattended_inventory_has_tool( const inventory &inv, const tool_comp &tool )
+{
+    if( tool.type == itype_id::NULL_ID() ) {
+        return true;
+    }
+    return tool.count > 0 ? inv.has_charges( tool.type, 1 ) : inv.has_tools( tool.type, 1 );
+}
+
+bool unattended_environment_satisfied( const item &craft, map &here, Character *carrier,
+                                        const tripoint &pos )
+{
+    const recipe &rec = craft.get_making();
+    const recipe_unattended_data &data = rec.unattended_craft();
+    if( !data.check_environment ) {
+        return true;
+    }
+
+    Character *source = unattended_source_character( craft, carrier, pos );
+
+    inventory map_inv;
+    map_inv.form_from_map( pos, PICKUP_RANGE, source, false, false );
+
+    inventory character_inv;
+    inventory combined_inv = map_inv;
+    if( source != nullptr ) {
+        character_inv = source->crafting_inventory( source->pos(), -1, false );
+        combined_inv = source->crafting_inventory( pos, PICKUP_RANGE, false );
+    }
+
+    for( const std::vector<quality_requirement> &group :
+         rec.simple_requirements().get_qualities() ) {
+        bool group_satisfied = false;
+        for( const quality_requirement &quality : group ) {
+            if( quality.has( combined_inv, return_true<item> ) ) {
+                group_satisfied = true;
+                break;
+            }
+        }
+        if( !group_satisfied ) {
+            return false;
+        }
+    }
+
+    const std::vector<comp_selection<tool_comp>> &selected_tools =
+        craft.get_cached_tool_selections();
+    if( selected_tools.empty() ) {
+        for( const std::vector<tool_comp> &alternatives :
+             rec.simple_requirements().get_tools() ) {
+            bool group_satisfied = false;
+            for( const tool_comp &tool : alternatives ) {
+                if( unattended_inventory_has_tool( combined_inv, tool ) ) {
+                    group_satisfied = true;
+                    break;
+                }
+            }
+            if( !group_satisfied ) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    for( const comp_selection<tool_comp> &selection : selected_tools ) {
+        const inventory *source_inv = &combined_inv;
+        switch( selection.use_from ) {
+            case usage_from::player:
+                if( source == nullptr ) {
+                    return false;
+                }
+                source_inv = &character_inv;
+                break;
+            case usage_from::map:
+                source_inv = &map_inv;
+                break;
+            case usage_from::both:
+            case usage_from::none:
+                source_inv = &combined_inv;
+                break;
+            case usage_from::cancel:
+            case usage_from::num_usages_from:
+                return false;
+        }
+        if( !unattended_inventory_has_tool( *source_inv, selection.comp ) ) {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
+
 bool item::unattended_craft_started() const
 {
     return is_craft() && craft_data_->unattended_started;
@@ -15754,25 +15883,31 @@ bool item::unattended_craft_waiting() const
 
 bool item::unattended_craft_is_ready() const
 {
-    return unattended_craft_waiting() && calendar::turn >= craft_data_->unattended_ready_at;
+    return unattended_craft_waiting() && !unattended_craft_is_paused() &&
+           calendar::turn >= craft_data_->unattended_ready_at;
 }
 
 bool item::unattended_craft_has_failed() const
 {
-    return unattended_craft_waiting() &&
+    return unattended_craft_waiting() && !unattended_craft_is_paused() &&
            craft_data_->unattended_fail_at != calendar::before_time_starts &&
            calendar::turn >= craft_data_->unattended_fail_at;
 }
 
+bool item::unattended_craft_is_paused() const
+{
+    return unattended_craft_waiting() && craft_data_->unattended_paused;
+}
+
 time_point item::unattended_craft_ready_at() const
 {
-    return unattended_craft_waiting() ? craft_data_->unattended_ready_at :
-           calendar::before_time_starts;
+    return unattended_craft_waiting() && !unattended_craft_is_paused() ?
+           craft_data_->unattended_ready_at : calendar::before_time_starts;
 }
 
 std::optional<time_point> item::unattended_craft_fail_at() const
 {
-    if( !unattended_craft_waiting() ||
+    if( !unattended_craft_waiting() || unattended_craft_is_paused() ||
         craft_data_->unattended_fail_at == calendar::before_time_starts ) {
         return std::nullopt;
     }
@@ -15784,16 +15919,21 @@ time_duration item::unattended_craft_time_remaining() const
     if( !unattended_craft_waiting() || unattended_craft_is_ready() ) {
         return 0_turns;
     }
-    return craft_data_->unattended_ready_at - calendar::turn;
+    const time_point reference = unattended_craft_is_paused() ?
+                                 craft_data_->unattended_pause_started_at : calendar::turn;
+    return std::max( 0_turns, craft_data_->unattended_ready_at - reference );
 }
 
 time_duration item::unattended_craft_safe_time_remaining() const
 {
-    if( !unattended_craft_waiting() || !unattended_craft_fail_at() ||
+    if( !unattended_craft_waiting() ||
+        craft_data_->unattended_fail_at == calendar::before_time_starts ||
         unattended_craft_has_failed() ) {
         return 0_turns;
     }
-    return *unattended_craft_fail_at() - calendar::turn;
+    const time_point reference = unattended_craft_is_paused() ?
+                                 craft_data_->unattended_pause_started_at : calendar::turn;
+    return std::max( 0_turns, craft_data_->unattended_fail_at - reference );
 }
 
 void item::start_unattended_craft()
@@ -15803,9 +15943,16 @@ void item::start_unattended_craft()
     const recipe_unattended_data &data = get_making().unattended_craft();
     craft_data_->unattended_started = true;
     craft_data_->unattended_finished = false;
+    craft_data_->unattended_paused = false;
+    craft_data_->unattended_pause_started_at = calendar::before_time_starts;
     craft_data_->unattended_ready_at = calendar::turn + data.duration;
     craft_data_->unattended_fail_at = data.max_time ? calendar::turn + *data.max_time :
                                       calendar::before_time_starts;
+    craft_data_->unattended_env_check_at = data.check_environment ?
+                                           std::min( calendar::turn + 1_minutes,
+                                                   craft_data_->unattended_ready_at ) :
+                                           calendar::before_time_starts;
+    active = data.check_environment;
 }
 
 void item::finish_unattended_craft()
@@ -15814,6 +15961,71 @@ void item::finish_unattended_craft()
     craft_data_->unattended_finished = true;
     craft_data_->unattended_ready_at = calendar::before_time_starts;
     craft_data_->unattended_fail_at = calendar::before_time_starts;
+    craft_data_->unattended_paused = false;
+    craft_data_->unattended_pause_started_at = calendar::before_time_starts;
+    craft_data_->unattended_env_check_at = calendar::before_time_starts;
+    active = false;
+}
+
+void item::update_unattended_craft_environment( map &here, Character *carrier,
+        const tripoint &pos )
+{
+    if( !unattended_craft_waiting() || !get_making().unattended_craft().check_environment ) {
+        return;
+    }
+    if( craft_data_->unattended_env_check_at != calendar::before_time_starts &&
+        calendar::turn < craft_data_->unattended_env_check_at ) {
+        return;
+    }
+
+    const time_point scheduled_check = craft_data_->unattended_env_check_at ==
+                                       calendar::before_time_starts ? calendar::turn :
+                                       craft_data_->unattended_env_check_at;
+    const bool environment_ok = unattended_environment_satisfied( *this, here, carrier, pos );
+
+    if( !environment_ok ) {
+        if( !craft_data_->unattended_paused ) {
+            craft_data_->unattended_paused = true;
+            craft_data_->unattended_pause_started_at = std::min( calendar::turn, scheduled_check );
+            if( carrier != nullptr ) {
+                carrier->add_msg_if_player( m_warning,
+                                            _( "缺少所需工具或环境条件，无人值守工序已经暂停。" ) );
+            } else {
+                add_msg_if_player_sees( pos, m_warning,
+                                        _( "%s的无人值守工序因为条件中断而暂停。" ), tname() );
+            }
+        }
+        craft_data_->unattended_env_check_at = calendar::turn + 1_minutes;
+        active = true;
+        return;
+    }
+
+    if( craft_data_->unattended_paused ) {
+        const time_duration paused_for = calendar::turn -
+                                         craft_data_->unattended_pause_started_at;
+        craft_data_->unattended_ready_at += paused_for;
+        if( craft_data_->unattended_fail_at != calendar::before_time_starts ) {
+            craft_data_->unattended_fail_at += paused_for;
+        }
+        craft_data_->unattended_paused = false;
+        craft_data_->unattended_pause_started_at = calendar::before_time_starts;
+        if( carrier != nullptr ) {
+            carrier->add_msg_if_player( m_good,
+                                        _( "所需工具与环境已经恢复，无人值守工序继续进行。" ) );
+        } else {
+            add_msg_if_player_sees( pos, m_good,
+                                    _( "%s的无人值守工序恢复进行。" ), tname() );
+        }
+    }
+
+    if( calendar::turn >= craft_data_->unattended_ready_at ) {
+        craft_data_->unattended_env_check_at = calendar::before_time_starts;
+        active = false;
+    } else {
+        craft_data_->unattended_env_check_at = std::min( calendar::turn + 1_minutes,
+                                                craft_data_->unattended_ready_at );
+        active = true;
+    }
 }
 
 void item::set_tools_to_continue( bool value )

@@ -90,6 +90,7 @@ struct recipe_unattended_data {
     int start_at = 0; // 百分比，不包含 0 和 100。
     time_duration duration;
     std::optional<time_duration> max_time;
+    bool check_environment = true;
     translation start_message;
     translation ready_message;
     translation failure_message;

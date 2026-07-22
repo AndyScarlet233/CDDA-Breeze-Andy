@@ -9130,7 +9130,7 @@ static item *wield_before_use( Character *const p, item *const it, const std::st
     return it;
 }
 
-std::optional<int> iuse::craft( Character *p, item *it, bool, const tripoint & )
+std::optional<int> iuse::craft( Character *p, item *it, bool, const tripoint &pos )
 {
     if( p->is_mounted() ) {
         p->add_msg_if_player( m_info, _( "You can't do that while mounted." ) );
@@ -9149,7 +9149,14 @@ std::optional<int> iuse::craft( Character *p, item *it, bool, const tripoint & )
     }
 
     if( it->unattended_craft_waiting() ) {
+        it->update_unattended_craft_environment( get_map(), p, pos );
         const recipe_unattended_data &data = it->get_making().unattended_craft();
+        if( it->unattended_craft_is_paused() ) {
+            p->add_msg_if_player( m_warning,
+                                  _( "无人值守工序已暂停，还需%s。缺少所需工具或环境条件。" ),
+                                  to_string( it->unattended_craft_time_remaining() ) );
+            return 0;
+        }
         if( it->unattended_craft_has_failed() ) {
             p->add_msg_if_player(
                 m_bad, data.failure_message.empty() ?

@@ -2931,6 +2931,13 @@ void item::craft_data::serialize( JsonOut &jsout ) const
     if( unattended_fail_at != calendar::before_time_starts ) {
         jsout.member( "unattended_fail_at", unattended_fail_at );
     }
+    jsout.member( "unattended_paused", unattended_paused );
+    if( unattended_pause_started_at != calendar::before_time_starts ) {
+        jsout.member( "unattended_pause_started_at", unattended_pause_started_at );
+    }
+    if( unattended_env_check_at != calendar::before_time_starts ) {
+        jsout.member( "unattended_env_check_at", unattended_env_check_at );
+    }
     jsout.end_object();
 }
 
@@ -2956,6 +2963,13 @@ void item::craft_data::deserialize( const JsonObject &obj )
     }
     if( obj.has_member( "unattended_fail_at" ) ) {
         obj.read( "unattended_fail_at", unattended_fail_at );
+    }
+    unattended_paused = obj.get_bool( "unattended_paused", false );
+    if( obj.has_member( "unattended_pause_started_at" ) ) {
+        obj.read( "unattended_pause_started_at", unattended_pause_started_at );
+    }
+    if( obj.has_member( "unattended_env_check_at" ) ) {
+        obj.read( "unattended_env_check_at", unattended_env_check_at );
     }
 }
 

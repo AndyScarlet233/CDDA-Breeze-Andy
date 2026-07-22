@@ -52,6 +52,7 @@ void recipe_unattended_data::load( const JsonObject &jo )
         max_time = read_from_json_string<time_duration>( jo.get_member( "max_time" ),
                    time_duration::units );
     }
+    check_environment = jo.get_bool( "check_environment", true );
     jo.read( "start_message", start_message );
     jo.read( "ready_message", ready_message );
     jo.read( "failure_message", failure_message );

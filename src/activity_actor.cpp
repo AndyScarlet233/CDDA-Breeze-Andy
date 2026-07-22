@@ -3125,7 +3125,14 @@ bool craft_activity_actor::check_if_craft_okay( item_location &craft_item, Chara
     }
 
     if( craft->unattended_craft_waiting() ) {
+        craft->update_unattended_craft_environment( get_map(), &crafter, craft_item.position() );
         const recipe_unattended_data &data = craft->get_making().unattended_craft();
+        if( craft->unattended_craft_is_paused() ) {
+            crafter.add_msg_player_or_npc(
+                _( "无人值守工序已经暂停，缺少所需工具或环境条件。" ),
+                _( "<npcname>的无人值守工序已经暂停，缺少所需工具或环境条件。" ) );
+            return false;
+        }
         if( craft->unattended_craft_has_failed() ) {
             crafter.add_msg_player_or_npc(
                 data.failure_message.empty() ?

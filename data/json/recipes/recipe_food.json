@@ -3620,6 +3620,7 @@
       "start_at": 50,
       "time": "10 m",
       "max_time": "2 h",
+      "check_environment": false,
       "start_message": "面团已经揉好，接下来只需要等待它发酵。",
       "ready_message": "面团已经发好，可以继续烘烤了。",
       "failure_message": "面团放得太久，已经发酵过头并彻底坏掉。"
