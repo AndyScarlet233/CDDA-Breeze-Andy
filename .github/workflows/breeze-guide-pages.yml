@@ -1,17 +1,7 @@
 name: 构建并发布微风指南
 
 on:
-  push:
-    branches: [ test/next-release ]
-    paths:
-      - "breeze_guide/**"
-      - "data/json/**"
-      - "data/mods/**"
-      - "lang/po/zh_CN.po"
-      - "src/version.h"
-      - ".github/workflows/breeze-guide-pages.yml"
   workflow_dispatch:
-
 permissions:
   contents: read
   pages: write
